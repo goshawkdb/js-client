@@ -1,11 +1,11 @@
 const test = require('ava')
-const {transactionTest, firstRoot, setupThenTest} = require('../helpers/utils')
+const {transactionTest, testRootName, setupThenTest} = require('../helpers/utils')
 
 test("Retry with value changed by a time", setupThenTest(
-	transactionTest((t, connection, txn) => txn.write(firstRoot(txn), Buffer.from([0]), [])),
+	transactionTest((t, connection, txn) => txn.write(txn.root(testRootName), Buffer.from([0]), [])),
 	transactionTest(async (t, connection, txn) => {
 		t.plan(1)
-		const {value: valueBuf} = txn.read(firstRoot(txn))
+		const {value: valueBuf} = txn.read(txn.root(testRootName))
 		const value = new Uint8Array(valueBuf)
 		if (value[0] < 2) {
 			txn.retry()
@@ -15,7 +15,7 @@ test("Retry with value changed by a time", setupThenTest(
 	transactionTest((t, connection, txn) => {
 		return new Promise((resolve, reject) => {
 			setTimeout(() => {
-				txn.write(firstRoot(txn), Buffer.from([2]), [])
+				txn.write(txn.root(testRootName), Buffer.from([2]), [])
 				resolve()
 			}, 1000)
 		})
@@ -24,7 +24,7 @@ test("Retry with value changed by a time", setupThenTest(
 
 function testAndIncrement(number) {
 	return (t, connection, txn) => {
-		const rootRef = firstRoot(txn)
+		const rootRef = txn.root(testRootName)
 		const {value: valueBuffer} = txn.read(rootRef)
 		const value = new Uint8Array(valueBuffer)
 		if (value[0] < number) {
@@ -36,10 +36,10 @@ function testAndIncrement(number) {
 
 test("Retry with value changed multiple times by other connections.",
 	setupThenTest(
-		transactionTest((t, connection, txn) => txn.write(firstRoot(txn), Buffer.from([0]), [])),
+		transactionTest((t, connection, txn) => txn.write(txn.root(testRootName), Buffer.from([0]), [])),
 		transactionTest((t, connection, txn) => {
 			t.plan(1)
-			const {value: valueBuf} = txn.read(firstRoot(txn))
+			const {value: valueBuf} = txn.read(txn.root(testRootName))
 			const value = new Uint8Array(valueBuf)
 			if (value[0] < 5) {
 				txn.retry()

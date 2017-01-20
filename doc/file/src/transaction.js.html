@@ -35,6 +35,7 @@
   <li data-ice="doc"><span data-ice="kind" class="kind-class">C</span><span data-ice="name"><span><a href="class/src/connection.js~Connection.html">Connection</a></span></span></li>
 <li data-ice="doc"><span data-ice="kind" class="kind-class">C</span><span data-ice="name"><span><a href="class/src/errors.js~CapabilityDenied.html">CapabilityDenied</a></span></span></li>
 <li data-ice="doc"><span data-ice="kind" class="kind-class">C</span><span data-ice="name"><span><a href="class/src/errors.js~MutationNotAllowed.html">MutationNotAllowed</a></span></span></li>
+<li data-ice="doc"><span data-ice="kind" class="kind-class">C</span><span data-ice="name"><span><a href="class/src/errors.js~RootNotFoundError.html">RootNotFoundError</a></span></span></li>
 <li data-ice="doc"><span data-ice="kind" class="kind-class">C</span><span data-ice="name"><span><a href="class/src/errors.js~Throwable.html">Throwable</a></span></span></li>
 <li data-ice="doc"><span data-ice="kind" class="kind-class">C</span><span data-ice="name"><span><a href="class/src/errors.js~TransactionRejectedError.html">TransactionRejectedError</a></span></span></li>
 <li data-ice="doc"><span data-ice="kind" class="kind-class">C</span><span data-ice="name"><span><a href="class/src/errors.js~TransactionRetryNeeded.html">TransactionRetryNeeded</a></span></span></li>
@@ -51,7 +52,7 @@
 
 <div class="content" data-ice="content"><h1 data-ice="title">src/transaction.js</h1>
 <pre class="source-code line-number raw-source-code"><code class="prettyprint linenums" data-ice="content">const Ref = require(&apos;./ref&apos;)
-const {TransactionRetryNeeded, CapabilityDenied} = require(&apos;./errors&apos;)
+const {TransactionRetryNeeded, CapabilityDenied, RootNotFoundError} = require(&apos;./errors&apos;)
 const {toArrayBuffer} = require(&apos;./utils&apos;)
 const Uint64 = require(&apos;./uint64&apos;)
 
@@ -100,6 +101,19 @@ class Transaction {
 
 		/** @private */
 		this.cache = parentCache.getTemporaryView()
+	}
+
+	/**
+	 * Gets a reference to a root by the root name.
+	 * @throws {RootNotFoundError} if the root isn&apos;t present.
+	 * @param {string} rootName the name of the root to get.
+	 * @returns {Ref} a reference to the root specified.
+	 */
+	root(rootName) {
+		if (rootName in this.roots === false) {
+			throw new RootNotFoundError(`Root &apos;${rootName}&apos; was not found.  Available roots were &apos;${Object.keys(this.roots).join(&quot;&apos;, &apos;&quot;)}&apos;.`)
+		}
+		return this.roots[rootName]
 	}
 
 	/**

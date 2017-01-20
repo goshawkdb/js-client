@@ -22,14 +22,15 @@ if (process.env.GOSHAWKDB_DEFAULT_CLIENT_KEYPAIR) {
 	clientKeyPath = process.env.GOSHAWKDB_DEFAULT_CLIENT_KEYPAIR
 }
 
-let clusterHosts = process.env.GOSHAWKDB_DEFAULT_CLUSTER_HOSTS || "localhost:7894;"
-const firstHost = clusterHosts.substring(0, clusterHosts.indexOf(':'))
+const clusterHosts = process.env.GOSHAWKDB_DEFAULT_CLUSTER_HOSTS_WSS || "localhost:7895;"
+const [firstHost, firstPort = 7895] = clusterHosts.split(';')[0].split(":")
 
 const pemFile = loadPem(clientKeyPath)
 
 module.exports = {
 	host: firstHost,
-	wssPort: 7895,
+	port: firstPort,
+	root: process.env.GOSHAWKDB_ROOT_NAME || 'test',
 	rejectUnauthorized: false,
 	cert: `-----BEGIN CERTIFICATE-----\n${pemFile["CERTIFICATE"]}\n-----END CERTIFICATE-----`,
 	key: `-----BEGIN EC PRIVATE KEY-----\n${pemFile["EC PRIVATE KEY"]}\n-----END EC PRIVATE KEY-----`

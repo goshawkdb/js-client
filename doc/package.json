@@ -1,6 +1,6 @@
 {
   "name": "goshawkdb",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "A javascript client for goshawkdb.",
   "main": "./index.js",
   "scripts": {
@@ -27,7 +27,7 @@
   "author": "me@kybernetikos.com",
   "license": "Apache-2.0",
   "bugs": {
-    "url": "https://github.com/goshawkdb/js-client/issues"
+    "url": "https://bugs.goshawkdb.io/project/view/10/"
   },
   "homepage": "https://rawgit.com/goshawkdb/js-client/master/doc/index.html",
   "dependencies": {

@@ -32,14 +32,6 @@
 		return new TextDecoder('utf-8').decode(arraybuffer)
 	}
 
-	function firstRoot(txn) {
-		for (let rootName in txn.roots) {
-			console.log("Found root", rootName)
-			return txn.roots[rootName]
-		}
-		throw new Error("No roots.")
-	}
-
 	function ensureThrows(code, err) {
 		try {
 			code()
@@ -58,13 +50,13 @@
 	}
 
 	function setup(txn) {
-		const root = firstRoot(txn)
+		const root = txn.root('test')
 		const o1 = txn.create(stringToArrayBuffer("Hello World"), [])
 		txn.write(root, stringToArrayBuffer("root obj"), [o1.denyRead(), o1.denyWrite(), o1.denyRead().denyWrite()])
 	}
 
 	function test(txn) {
-		const root = firstRoot(txn)
+		const root = txn.root('test')
 		const {value:rootValue, refs:rootRefs} = txn.read(root)
 		const noReadyRef = rootRefs[0]
 		const noWriteyRef = rootRefs[1]

@@ -30,6 +30,12 @@ window.esdocSearchIndex = [
     "class"
   ],
   [
+    "goshawkdb/src/errors.js~rootnotfounderror",
+    "class/src/errors.js~RootNotFoundError.html",
+    "<span>RootNotFoundError</span> <span class=\"search-result-import-path\">goshawkdb/src/errors.js</span>",
+    "class"
+  ],
+  [
     "goshawkdb/src/errors.js~throwable",
     "class/src/errors.js~Throwable.html",
     "<span>Throwable</span> <span class=\"search-result-import-path\">goshawkdb/src/errors.js</span>",
@@ -567,6 +573,12 @@ window.esdocSearchIndex = [
     "src/transaction.js~transaction#retry",
     "class/src/transaction.js~Transaction.html#instance-method-retry",
     "src/transaction.js~Transaction#retry",
+    "method"
+  ],
+  [
+    "src/transaction.js~transaction#root",
+    "class/src/transaction.js~Transaction.html#instance-method-root",
+    "src/transaction.js~Transaction#root",
     "method"
   ],
   [
