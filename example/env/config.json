@@ -1,12 +1,14 @@
 {
-    "ClusterId": "MyFirstGoshawkDBCluster",
+    "ClusterId": "myCluster",
     "Version": 1,
-    "Hosts": ["localhost"],
+    "Hosts": [
+        "localhost"
+    ],
     "F": 0,
     "MaxRMCount": 5,
     "ClientCertificateFingerprints": {
-        "8954dcc3ef2626b72b9e7c2859fbf02e37e1a55563606c097c2f158863d41514": {
-            "myRoot": {
+        "6c5b2b2efc0ef77248af64cda16445fdfe936c9f5484711d77c9d67bba5dfe44": {
+            "test": {
               "Read": true,
               "Write": true
             }
