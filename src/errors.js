@@ -31,3 +31,8 @@ exports.CapabilityDenied = class CapabilityDenied extends exports.Throwable {}
  * Thrown when the server sends back an error because it was not able to commit the transaction.
  */
 exports.TransactionRejectedError = class TransactionRejectedError extends exports.Throwable {}
+
+/**
+ * Thrown when transaction code attempts to get a root by name and it isn't present.
+ */
+exports.RootNotFoundError = class RootNotFoundError extends exports.Throwable {}

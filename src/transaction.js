@@ -1,5 +1,5 @@
 const Ref = require('./ref')
-const {TransactionRetryNeeded, CapabilityDenied} = require('./errors')
+const {TransactionRetryNeeded, CapabilityDenied, RootNotFoundError} = require('./errors')
 const {toArrayBuffer} = require('./utils')
 const Uint64 = require('./uint64')
 
@@ -48,6 +48,19 @@ class Transaction {
 
 		/** @private */
 		this.cache = parentCache.getTemporaryView()
+	}
+
+	/**
+	 * Gets a reference to a root by the root name.
+	 * @throws {RootNotFoundError} if the root isn't present.
+	 * @param {string} rootName the name of the root to get.
+	 * @returns {Ref} a reference to the root specified.
+	 */
+	root(rootName) {
+		if (rootName in this.roots === false) {
+			throw new RootNotFoundError(`Root '${rootName}' was not found.  Available roots were '${Object.keys(this.roots).join("', '")}'.`)
+		}
+		return this.roots[rootName]
 	}
 
 	/**

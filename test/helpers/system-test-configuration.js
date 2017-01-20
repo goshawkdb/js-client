@@ -22,7 +22,7 @@ if (process.env.GOSHAWKDB_DEFAULT_CLIENT_KEYPAIR) {
 	clientKeyPath = process.env.GOSHAWKDB_DEFAULT_CLIENT_KEYPAIR
 }
 
-const clusterHosts = process.env.GOSHAWKDB_DEFAULT_CLUSTER_HOSTS || "localhost:7895;"
+const clusterHosts = process.env.GOSHAWKDB_DEFAULT_CLUSTER_HOSTS_WSS || "localhost:7895;"
 const [firstHost, firstPort = 7895] = clusterHosts.split(';')[0].split(":")
 
 const pemFile = loadPem(clientKeyPath)

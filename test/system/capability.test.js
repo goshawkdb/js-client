@@ -5,12 +5,12 @@ const {setupThenTransactionTest, testRootName} = require('../helpers/utils')
 test("Capabilities are enforced.",
 	setupThenTransactionTest(
 		(t, connection, txn) => {
-			const root = txn.roots[testRootName]
+			const root = txn.root(testRootName)
 			const o1 = txn.create(Buffer.from("Hello World"), [])
 			txn.write(root, Buffer.from("root obj"), [o1.denyRead(), o1.denyWrite(), o1.denyRead().denyWrite()])
 		},
 		(t, connection, txn) => {
-			const root = txn.roots[testRootName]
+			const root = txn.root(testRootName)
 			const {value:rootValue, refs:rootRefs} = txn.read(root)
 			const noReadyRef = rootRefs[0]
 			const noWriteyRef = rootRefs[1]

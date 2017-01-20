@@ -30,7 +30,7 @@ uYe5KPLwvAklFGOj0YmrsoPpmawr0/2xeA==
 
 goshawkdb.connect("wss://localhost:7895/ws", connectionOptions).then((connection) => {
 	return connection.transact((txn) => {
-		const testRootRef = txn.roots['test']
+		const testRootRef = txn.root('test')
 		const root = txn.read(testRootRef)
 		console.log("test root contains", root.value, root.refs)
 		txn.write(testRootRef, Buffer.from("Boo!"), root.refs)
