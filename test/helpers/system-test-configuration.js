@@ -36,4 +36,3 @@ module.exports = {
 }
 
 console.log("Using client configuration from", clientKeyPath, ":", module.exports)
-
