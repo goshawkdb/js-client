@@ -1,6 +1,6 @@
 # goshawkdb
 
-GoshawkDb is a javascript client for goshawkdb that works in node or the browser.
+A JavaScript client for GoshawkDB that works in node or the browser.
 
 Dev only links:
 * [Doc](https://rawgit.com/goshawkdb/js-client/master/doc/index.html)
@@ -9,11 +9,14 @@ Dev only links:
 
 ## Notes for getting Started
 
-Run a goshawkdb server with the config found in `example/env`.  See the [goshawkdb documentation](https://goshawkdb.io/documentation.html).
+Run a GoshawkDB server with the config found in `example/env`.  See the [goshawkdb documentation](https://goshawkdb.io/documentation.html).
 
-When running in the browser, you'll need to import the certificates for your user.  You can 
-test that you've done this correctly by going to [https://localhost:7895/ws](https://localhost:7895/).  
-If it's working, it will say 'GoshawkDB Server version dev. Websocket available at /ws'.
+When running in the browser, you currently need to import the
+certificates for your user.  You can test that you've done this
+correctly by going
+to [https://localhost:7895/ws](https://localhost:7895/).  If it's
+working, it will say 'GoshawkDB Server version dev. Websocket
+available at /ws'.
 
 To see the web example
 
@@ -36,7 +39,7 @@ node example/node-example.js
 
 ### In Node
 
-Import the goshawkdb client
+Import the GoshawkDB client
 
 ```bash
 npm install --save goshawkdb
@@ -55,7 +58,7 @@ if (process.stdout.isTTY) {
 }
 ```
 
-Get a goshawkdb reference and open a connection:
+Get a `goshawkdb` reference and open a connection:
 
 ```js
 const goshawkdb = require('goshawkdb')
@@ -111,7 +114,7 @@ Now include your code, e.g.
 
 ```js
 goshawksb.connect("wss://localhost:7895/ws").then((connection) => {
-  
+
     // this is where your goshawkdb code goes
 
 })

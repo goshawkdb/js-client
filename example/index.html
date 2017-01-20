@@ -2,17 +2,21 @@
 <html>
 <head>
 	<meta charset="utf-8" />
-	<title>GoshawkDb Example Test Page</title>
+	<title>GoshawkDB Example Test Page</title>
 	<script type="text/javascript" src="../dist/goshawkdb.browser.js"></script>
 </head>
 <body>
 <p>
-	GoshawkDb Example Test Page.  Open the developer console for more information.
+	GoshawkDB Example Test Page.  Open the developer console for more information.
 </p>
 
 <p>
-	This test overwrites the contents of your root object.  It checks that references created with particular capabilities
-	don't allow you access to objects that you aren't supposed to have.
+	This test overwrites the contents of your first root
+	object. However, root objects are not ordered, so if you have
+	multiple root objects, this test will essentially select one
+	at random. The test checks that references created with
+	particular capabilities don't allow you access to objects that
+	you aren't supposed to have.
 </p>
 
 <button onclick="runTest()">Run Test</button>

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
 DIRECTORY=`dirname $0`
-GOS=~/dev/jsgos/src/goshawkdb.io/server/cmd/goshawkdb/goshawkdb
+GOS=/path/to/goshawkdb
 
-$GOS -config $DIRECTORY/config.json --wssPort 7895 -cert $DIRECTORY/clusterCert.pem -dir $DIRECTORY/data
+$GOS -config $DIRECTORY/config.json --wss -cert $DIRECTORY/clusterKeyPair.pem -dir $DIRECTORY/data
