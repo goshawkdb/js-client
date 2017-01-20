@@ -1,18 +1,18 @@
 const test = require('ava')
-const {transactionTest, transactionMustFail, firstRoot, setupThenTest} = require('../helpers/utils')
+const {transactionTest, transactionMustFail, testRootName, setupThenTest} = require('../helpers/utils')
 const {TransactionRejectedError} = require('../../src/errors')
 
 test("Nested transactions can provide values that their parents use.",
 	transactionTest(async (t, connection, txn) => {
 			const expected = await txn.transact((subTxn) => {
 				const magicNumber = Math.floor(Math.random() * 255)
-				const root = firstRoot(subTxn)
+				const root = txn.roots[testRootName]
 				const o1 = subTxn.create(Buffer.from([magicNumber]), [])
 				subTxn.write(root, Buffer.from("root obj"), [o1])
 				return magicNumber
 			})
 
-			const root = firstRoot(txn)
+			const root = txn.roots[testRootName]
 			const {refs:[createdObjectRef]} = txn.read(root)
 			const {value} = txn.read(createdObjectRef)
 
@@ -47,7 +47,7 @@ test("Nested transactions can create objects that their parents can use.", trans
 
 function testAndIncrement(number) {
 	return (t, connection, txn) => {
-		const rootRef = firstRoot(txn)
+		const rootRef = txn.roots[testRootName]
 		const {value: valueBuffer} = txn.read(rootRef)
 		const value = new Uint8Array(valueBuffer)
 		if (value[0] < number) {
@@ -59,17 +59,17 @@ function testAndIncrement(number) {
 
 test("Nested transactions can retry.",
 	setupThenTest(
-		transactionTest((t, connection, txn) => txn.write(firstRoot(txn), Buffer.from([0]), [])),
+		transactionTest((t, connection, txn) => txn.write(txn.roots[testRootName], Buffer.from([0]), [])),
 		transactionTest((t, connection, txn) => {
 			t.plan(1)
 			txn.transact((subTxn) => {
-				const {value: valueBuf} = txn.read(firstRoot(txn))
+				const {value: valueBuf} = txn.read(txn.roots[testRootName])
 				const value = new Uint8Array(valueBuf)
 				if (value[0] < 5) {
 					subTxn.retry()
 				}
 			})
-			const {value: valueBuf} = txn.read(firstRoot(txn))
+			const {value: valueBuf} = txn.read(txn.roots[testRootName])
 			const value = new Uint8Array(valueBuf)
 			t.is(value[0], 5)
 		}),

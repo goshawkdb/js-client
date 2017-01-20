@@ -50,7 +50,7 @@
 </nav>
 
 <div class="content" data-ice="content"><div data-ice="index" class="github-markdown"><h1 id="goshawkdb">goshawkdb</h1>
-<p>GoshawkDb is a javascript client for goshawkdb that works in node or the browser.</p>
+<p>A JavaScript client for GoshawkDB that works in node or the browser.</p>
 <p>Dev only links:</p>
 <ul>
 <li><a href="https://rawgit.com/goshawkdb/js-client/master/doc/index.html">Doc</a></li>
@@ -58,9 +58,13 @@
 <li>Script tag: <code>&lt;script type=&quot;text/javascript&quot; src=&quot;https://rawgit.com/goshawkdb/js-client/master/dist/goshawkdb.browser.js&quot;&gt;&lt;/script&gt;</code></li>
 </ul>
 <h2 id="notes-for-getting-started">Notes for getting Started</h2>
-<p>Run a goshawkdb server with the config found in <code>example/env</code>.  See the <a href="https://goshawkdb.io/documentation.html">goshawkdb documentation</a>.</p>
-<p>When running in the browser, you&apos;ll need to import the certificates for your user.  You can 
-test that you&apos;ve done this correctly by going to <a href="https://localhost:7895/">https://localhost:7895/ws</a>.<br>If it&apos;s working, it will say &apos;GoshawkDB Server version dev. Websocket available at /ws&apos;.</p>
+<p>Run a GoshawkDB server with the config found in <code>example/env</code>.  See the <a href="https://goshawkdb.io/documentation.html">goshawkdb documentation</a>.</p>
+<p>When running in the browser, you currently need to import the
+certificates for your user.  You can test that you&apos;ve done this
+correctly by going
+to <a href="https://localhost:7895/">https://localhost:7895/ws</a>.  If it&apos;s
+working, it will say &apos;GoshawkDB Server version dev. Websocket
+available at /ws&apos;.</p>
 <p>To see the web example</p>
 <pre><code><code class="source-code prettyprint">npm run start</code>
 </code></pre><p>And navigate to <a href="http://localhost:8080/example/">http://localhost:8080/example/</a></p>
@@ -70,7 +74,7 @@ with two references to other objects.</p>
 <pre><code><code class="source-code prettyprint">node example/node-example.js</code>
 </code></pre><h2 id="setup">Setup</h2>
 <h3 id="in-node">In Node</h3>
-<p>Import the goshawkdb client</p>
+<p>Import the GoshawkDB client</p>
 <pre><code class="lang-bash"><code class="source-code prettyprint">npm install --save goshawkdb</code>
 </code></pre>
 <p>When running in node, I suggest the following in your code:</p>
@@ -83,7 +87,7 @@ if (process.stdout.isTTY) {
     require(&apos;util&apos;).inspect.defaultOptions.colors = true
 }</code>
 </code></pre>
-<p>Get a goshawkdb reference and open a connection:</p>
+<p>Get a <code>goshawkdb</code> reference and open a connection:</p>
 <pre><code class="lang-js"><code class="source-code prettyprint">const goshawkdb = require(&apos;goshawkdb&apos;)
 
 // These will need to be for a user that your goshawkdb configuration allows.

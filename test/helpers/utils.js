@@ -1,18 +1,11 @@
 const connectionOptions = require('./system-test-configuration')
 const goshawkdb = require('../..')
 
-function firstRoot(txn) {
-	for (let rootName in txn.roots) {
-		return txn.roots[rootName]
-	}
-	throw new Error("No roots.")
-}
-
 function transactionMustFail(error, test) {
 	return (t) => {
 		return new Promise((resolve, reject) => {
 			goshawkdb
-				.connect(`wss://${connectionOptions.host}:${connectionOptions.wssPort}/ws`, connectionOptions)
+				.connect(`wss://${connectionOptions.host}:${connectionOptions.port}/ws`, connectionOptions)
 				.then((conn) => {
 					return conn.transact((txn) => {
 						return test(t, conn, txn)
@@ -39,28 +32,12 @@ function transactionTest(test) {
 	return (t) => {
 		return new Promise((resolve, reject) => {
 			goshawkdb
-				.connect(`wss://${connectionOptions.host}:${connectionOptions.wssPort}/ws`, connectionOptions)
+				.connect(`wss://${connectionOptions.host}:${connectionOptions.port}/ws`, connectionOptions)
 				.then((conn) => {
 					return conn.transact((txn) => {
 						return Promise.resolve(test(t, conn, txn))
 					}).then(resolve, reject)
 				}).catch(reject)
-		})
-	}
-}
-
-function connectionTest(test) {
-	return (t) => {
-		return new Promise((resolve, reject) => {
-			goshawkdb
-				.connect(`wss://${connectionOptions.host}:${connectionOptions.wssPort}/ws`, connectionOptions)
-				.then((conn) => {
-					try {
-						return Promise.resolve(test(t, conn))
-					} catch (e) {
-						return Promise.reject(e)
-					}
-				}).then(resolve, reject)
 		})
 	}
 }
@@ -84,7 +61,7 @@ function setupThenTransactionTest(setup, test) {
 		return new Promise((resolve, reject) => {
 			let connection = null
 			goshawkdb
-				.connect(`wss://${connectionOptions.host}:${connectionOptions.wssPort}/ws`, connectionOptions)
+				.connect(`wss://${connectionOptions.host}:${connectionOptions.port}/ws`, connectionOptions)
 				.then((conn) => {
 					connection = conn
 					connection.transact((txn) => {
@@ -100,8 +77,8 @@ function setupThenTransactionTest(setup, test) {
 }
 
 exports.connectionOptions = connectionOptions
+exports.testRootName = connectionOptions.root
 exports.setupThenTransactionTest = setupThenTransactionTest
-exports.firstRoot = firstRoot
 exports.transactionTest = transactionTest
 exports.transactionMustFail = transactionMustFail
 exports.all = all
