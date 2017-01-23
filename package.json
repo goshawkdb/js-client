@@ -8,7 +8,7 @@
     "doc": "esdoc -c ./esdoc.json",
     "build": "webpack && npm run doc",
     "start": "webpack-dev-server",
-    "publish-doc": "npm run doc && gh-pages -d doc"
+    "publish-site": "npm run test && npm run build && gh-pages -d dist"
   },
   "engines": {
     "node": ">= 7.3.0"
