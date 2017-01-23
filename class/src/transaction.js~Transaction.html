@@ -262,7 +262,7 @@ read to change before rerunning.</p>
         <p>
           
           
-          <span data-ice="name"><span><a href="class/src/transaction.js~Transaction.html#instance-method-transact">transact</a></span></span><span data-ice="signature">(fn: <span><a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Function">function</a></span>): <span><a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Promise">Promise</a></span>&lt;<span>*</span>, <span><a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Error">Error</a></span>&gt;</span>
+          <span data-ice="name"><span><a href="class/src/transaction.js~Transaction.html#instance-method-transact">transact</a></span></span><span data-ice="signature">(fn: <span><a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Function">function</a></span>, onCommit: <span><span><a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Function">function</a></span><span>(result: <span>*</span>, meta: <span>*</span>)</span>: <span>*</span></span>): <span><a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Promise">Promise</a></span>&lt;<span>*</span>, <span><a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Error">Error</a></span>&gt;</span>
         </p>
       </div>
       <div>
@@ -687,11 +687,11 @@ and do not rethrow it, you will stop the retry behaviour from working.</p>
     
     
     
-    <span data-ice="name">transact</span><span data-ice="signature">(fn: <span><a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Function">function</a></span>): <span><a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Promise">Promise</a></span>&lt;<span>*</span>, <span><a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Error">Error</a></span>&gt;</span>
+    <span data-ice="name">transact</span><span data-ice="signature">(fn: <span><a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Function">function</a></span>, onCommit: <span><span><a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Function">function</a></span><span>(result: <span>*</span>, meta: <span>*</span>)</span>: <span>*</span></span>): <span><a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Promise">Promise</a></span>&lt;<span>*</span>, <span><a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Error">Error</a></span>&gt;</span>
     <span class="right-info">
       
       
-      <span data-ice="source"><span><a href="file/src/transaction.js.html#lineNumber146">source</a></span></span>
+      <span data-ice="source"><span><a href="file/src/transaction.js.html#lineNumber150">source</a></span></span>
     </span>
   </h3>
 
@@ -718,6 +718,16 @@ and do not rethrow it, you will stop the retry behaviour from working.</p>
       <td data-ice="appendix"></td>
       <td data-ice="description"><p>the transaction function.  This function may be run multiple times and should rethrow any
                             TransactionRetryNeeded exceptions.</p>
+</td>
+    </tr>
+<tr data-ice="property" data-depth="0">
+      <td data-ice="name" data-depth="0">onCommit</td>
+      <td data-ice="type"><span><span><a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Function">function</a></span><span>(result: <span>*</span>, meta: <span>*</span>)</span>: <span>*</span></span></td>
+      <td data-ice="appendix"></td>
+      <td data-ice="description"><p>a callback function that returns the result of the transaction
+                            when it commits.  While the returned promise will resolve immediately the subtransaction is
+                            successfully registered by the outer transaction, the onCommit callback will only be fired when the
+                          mutations in the subtransaction have successfully been committed to the database.</p>
 </td>
     </tr>
 </tbody>
