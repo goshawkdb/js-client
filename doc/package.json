@@ -1,6 +1,6 @@
 {
   "name": "goshawkdb",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "A javascript client for goshawkdb.",
   "main": "./index.js",
   "scripts": {

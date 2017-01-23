@@ -3,7 +3,7 @@
     "__docId__": 0,
     "kind": "file",
     "name": "src/connection.js",
-    "content": "const MsgpackConnection = require('./msgpack-connection')\nconst Uint64 = require('./uint64')\nconst Transaction = require('./transaction')\nconst Ref = require('./ref')\nconst {TransactionRetryNeeded, TransactionRejectedError} = require('./errors')\nconst ObjectCache = require('./objectcache')\nconst {binaryToHex, asPromise} = require('./utils')\n\nlet nextConnectionNumber = 0\n\n/**\n * GosConnections represent the connection to the GoshawkDB.\n *\n * They should be acquired through the static {@link GoshawkDb.connect} function.\n */\nclass Connection {\n\t/** @private */\n\tconstructor(url) {\n\t\t/** @private used in logging to distinguish different connections */\n\t\tthis.connectionId = (nextConnectionNumber++)\n\t\t/** @private */\n\t\tthis.link = new MsgpackConnection(url, (\"000\" + this.connectionId).substr(-3))\n\n\t\t/**\n\t\t * The product and version information we sent to the server during the initial connection handshake.\n\t\t * @type {{Product: string, Version: string}}\n\t\t */\n\t\tthis.clientInfo = {Product: \"GoshawkDB\", Version: \"dev\"}\n\n\t\t/**\n\t\t * The product and version information we receive from the server during the initial handshake.\n\t\t * Will always be set after the promise returned by connect has resolved successfully.  May be null otherwise.\n\t\t * @type {?{Product: string, Version: string}}\n\t\t */\n\t\tthis.serverInfo = null\n\n\t\t/**\n\t\t * The namespace that the server assigns to this client.\n\t\t * Will always be set after the promise returned by connect has resolved successfully.  May be null otherwise.\n\t\t * @type {?ArrayBuffer}\n\t\t */\n\t\tthis.namespace = null\n\n\t\t/**\n\t\t * The roots that this client has access to.\n\t\t * Provided by the server during handshake.\n\t\t * Will always be set after the promise returned by connect has resolved successfully.  May be empty otherwise.\n\t\t * @type {{string: Ref}}\n\t\t */\n\t\tthis.roots = {}\n\n\t\t/** @private the function to deal with incoming messages */\n\t\tthis.messageHandler = null\n\t\t/** @private the top level cache that stores all the values and refs for objects the client knows about. */\n\t\tthis.cache = null\n\n\t\t// we control the first 8 bytes of transaction ids and new object ids (used during creation).\n\t\t// the namespace is appended to them when actually sent to the server.  We can't use normal js\n\t\t// numbers as javascript doesn't support 64 integers.  The only actual operation we need is 'increment'.\n\t\t/** @private */\n\t\tthis.nextTransactionId = Uint64.from(0, 0, 0, 0, 0, 0, 0, 0)\n\n\t\t/** @private the queue of transactions.*/\n\t\tthis.transactions = []\n\t\t/** @private the transaction currently being processed.*/\n\t\tthis.currentTransaction = null\n\t\t/** @private the timeout handle or null if no timeout to process a transaction is waiting*/\n\t\tthis.scheduledCallback = null\n\t}\n\n\t/**\n\t * Connects to the server.  If running in node, you will need to provide connectionOptions that include the client\n\t * certificate and key.\n\t *\n\t * @return {Promise<Connection, Error>}\n\t */\n\tconnect(connectionOptions) {\n\t\tconst serverHelloHandler = (message) => {\n\t\t\t// TODO? : a check could go here to ensure that the server version matches our version (from this.clientInfo.Version).\n\t\t\tthis.serverInfo = message\n\t\t\tthis.messageHandler = rootsHandler\n\t\t}\n\n\t\tconst rootsHandler = (message) => {\n\t\t\t// populate the roots\n\t\t\tthis.roots = {}\n\t\t\tfor (const root of message.Roots) {\n\t\t\t\tthis.roots[root.Name] = Ref.fromMessage(root)\n\t\t\t}\n\t\t\t// set the namespace\n\t\t\tthis.namespace = message.Namespace\n\n\t\t\t// now we're properly connected\n\t\t\tthis.messageHandler = null\n\t\t\tthis.cache = new ObjectCache(this.namespace)\n\t\t\tconsole.info(`Connection ${this.connectionId}: Connected to goshawkdb.`, this.serverInfo, this.clientInfo, this.namespace, this.roots)\n\t\t\tthis._onConnectionNegotiated(this)\n\t\t}\n\n\t\t// This promise should resolve with a working, setup connection if the connection makes its way to a fully\n\t\t// negotiated connection: i.e. it connects, it swaps info, it loads the roots and the namespace and initialises the\n\t\t// relevant state.\n\t\t// If anything happens to disrupt this process before it completes, this promise will reject.\n\t\treturn new Promise((resolve, reject) => {\n\t\t\tthis._onConnectionNegotiated = resolve\n\t\t\tthis.messageHandler = serverHelloHandler\n\t\t\tthis.link.connect(\n\t\t\t\t// on message\n\t\t\t\t(data) => {\n\t\t\t\t\tif (this.messageHandler) {\n\t\t\t\t\t\tthis.messageHandler(data)\n\t\t\t\t\t} else {\n\t\t\t\t\t\tconsole.warn(`Connection ${this.connectionId}: No handler found for message`, data)\n\t\t\t\t\t}\n\t\t\t\t},\n\t\t\t\t// on end - if the connection stops for any reason (error, or deliberate) before it resolves then it rejects.\n\t\t\t\t(e) => reject(e),\n\t\t\t\t// on open we start the handshake by sending the client info.\n\t\t\t\t() => this.link.send(this.clientInfo),\n\t\t\t\tconnectionOptions\n\t\t\t)\n\t\t})\n\t}\n\n\t/**\n\t * Queues a transaction for running, then ensures that transaction processing is happening.\n\t * The returned promise resolves with the value returned by the fn once the transaction has committed.  The fn may be\n\t * run multiple times and so should avoid side effects.\n\t * fn may be an asynchronous or a synchronous function.\n\t *\n\t * @param {function(txn: Transaction): {*|Promise<*, Error>}} fn the transaction function.  This function may be run multiple times and should rethrow any TransactionRetryNeeded exceptions.\n\t * @returns {Promise<*, Error>} a promise that resolves to the result of the transaction function once the transaction submits or an error if it cannot.\n \t */\n\ttransact(fn) {\n\t\tif (fn instanceof Function === false) {\n\t\t\tthrow new TypeError(`Connection ${this.connectionId}: Transaction argument must be a function, was ${String(fn)}`)\n\t\t}\n\n\t\treturn new Promise((resolve, reject) => {\n\t\t\tthis.transactions.push(new Transaction(fn, {onSuccess: resolve, onFail: reject}, this.roots, this.namespace, this.cache))\n\t\t\tthis.scheduleNextTransaction(false)\n\t\t})\n\t}\n\n\t/**\n\t * Closes the underlying link.\n\t */\n\tclose() {\n\t\tthis.link.close()\n\t}\n\n\t// private api\n\n\t/** @private\n\t * Actually runs the next queued transaction.\n\t */\n\texecuteNextTransaction() {\n\t\tif (this.currentTransaction != null) {\n\t\t\t// we're currently processing a transaction, exit without doing anything.\n\t\t\treturn\n\t\t}\n\n\t\tconst currentTransaction = this.currentTransaction = this.transactions.shift()\n\t\tconst txnIdWithNamespace = this.nextTransactionId.concat(this.namespace)\n\n\t\tconst succeed = (finalId, transactionResult) => {\n\t\t\tif (finalId) {\n\t\t\t\tcurrentTransaction.promoteCache(finalId)\n\t\t\t}\n\t\t\tcurrentTransaction.onSuccess(transactionResult)\n\t\t\tthis.scheduleNextTransaction(true)\n\t\t}\n\t\tconst retry = () => {\n\t\t\tcurrentTransaction.reset()\n\t\t\tthis.transactions.unshift(currentTransaction)\n\t\t\tthis.scheduleNextTransaction(true)\n\t\t}\n\t\tconst fail = (err) => {\n\t\t\tcurrentTransaction.onFail(err)\n\t\t\tthis.scheduleNextTransaction(true)\n\t\t}\n\t\tconst sendTransaction = (result) => {\n\t\t\tconst transactionMessage = currentTransaction.toMessage(txnIdWithNamespace)\n\t\t\tif (transactionMessage.ClientTxnSubmission.Actions.length > 0) {\n\t\t\t\tthis.link.request(transactionMessage)\n\t\t\t\t\t.then((response) => {\n\t\t\t\t\t\tthis.updateFromTransactionResponse(response)\n\t\t\t\t\t\tconst outcome = response.ClientTxnOutcome\n\t\t\t\t\t\tif (outcome.Commit) {\n\t\t\t\t\t\t\tsucceed(outcome.FinalId, result)\n\t\t\t\t\t\t} else if (outcome.Error != \"\") {\n\t\t\t\t\t\t\tfail(new TransactionRejectedError(outcome.Error))\n\t\t\t\t\t\t} else if (outcome.Abort) {\n\t\t\t\t\t\t\tretry()\n\t\t\t\t\t\t} else {\n\t\t\t\t\t\t\tfail(\"Unknown response message \" + JSON.stringify(outcome))\n\t\t\t\t\t\t}\n\t\t\t\t\t}).catch(fail)\n\t\t\t} else {\n\t\t\t\tsucceed(undefined, result)\n\t\t\t}\n\t\t}\n\n\t\t// we use asPromise, since the result of running fn might be a Promise.\n\t\tasPromise(() => {\n\t\t\treturn currentTransaction.fn(currentTransaction)\n\t\t}).catch( (e) => {\n\t\t\tif (e instanceof TransactionRetryNeeded === false) {\n\t\t\t\tthrow e\n\t\t\t}\n\t\t}).then(sendTransaction, fail)\n\t}\n\n\t/** @private\n\t * Updates the top level connection cache and counters based on a response from the server.\n\t * @param response the msgpack response.\n\t */\n\tupdateFromTransactionResponse(response) {\n\t\t// Responses contain a final transaction id.  We take the first 8 bytes and increment it.\n\t\tthis.nextTransactionId = Uint64.fromBinary(response.ClientTxnOutcome.FinalId).inc()\n\t\t// If we received an Abort message, then we may also have received some cache update instructions.\n\t\tif (response.ClientTxnOutcome.Abort) {\n\t\t\tfor (let update of response.ClientTxnOutcome.Abort) {\n\t\t\t\tconst otherTxnId = update.Version.buffer\n\t\t\t\tfor (let action of update.Actions) {\n\t\t\t\t\tconst id = action.VarId\n\t\t\t\t\tif (action.Delete) {\n\t\t\t\t\t\tconsole.debug(`Connection ${this.connectionId}: Removing ${binaryToHex(id)} from cache.`)\n\t\t\t\t\t\tthis.cache.remove(id)\n\t\t\t\t\t} else {\n\t\t\t\t\t\tconst writeData = action.Write || action.Create\n\t\t\t\t\t\tif (writeData) {\n\t\t\t\t\t\t\tthis.cache.get(id).update(otherTxnId, writeData.Value.buffer, writeData.References.map(Ref.fromMessage))\n\t\t\t\t\t\t}\n\t\t\t\t\t}\n\t\t\t\t}\n\t\t\t}\n\t\t}\n\t}\n\n\t/** @private\n\t * If there is no transaction currently processing and we haven't scheduled one\n\t * and there is a transaction waiting to be processed, then schedule it.\n\t * @param {boolean} clearCurrentTransaction if true, this will first clear the current transaction.\n\t */\n\tscheduleNextTransaction(clearCurrentTransaction) {\n\t\tif (clearCurrentTransaction) {\n\t\t\tthis.currentTransaction = null\n\t\t}\n\t\tif (this.scheduledCallback == null && this.currentTransaction == null && this.transactions.length > 0) {\n\t\t\tthis.scheduledCallback = setTimeout(() => {\n\t\t\t\tthis.scheduledCallback = null\n\t\t\t\tthis.executeNextTransaction()\n\t\t\t}, 0)\n\t\t}\n\t}\n}\n\nmodule.exports = Connection",
+    "content": "const MsgpackConnection = require('./msgpack-connection')\nconst Uint64 = require('./uint64')\nconst Transaction = require('./transaction')\nconst Ref = require('./ref')\nconst {TransactionRetryNeeded, TransactionRejectedError} = require('./errors')\nconst ObjectCache = require('./objectcache')\nconst {binaryToHex, asPromise} = require('./utils')\n\nlet nextConnectionNumber = 0\n\n/**\n * GosConnections represent the connection to the GoshawkDB.\n *\n * They should be acquired through the static {@link GoshawkDb.connect} function.\n */\nclass Connection {\n\t/** @private */\n\tconstructor(url) {\n\t\t/** @private used in logging to distinguish different connections */\n\t\tthis.connectionId = (nextConnectionNumber++)\n\t\t/** @private */\n\t\tthis.link = new MsgpackConnection(url, (\"000\" + this.connectionId).substr(-3))\n\n\t\t/**\n\t\t * The product and version information we sent to the server during the initial connection handshake.\n\t\t * @type {{Product: string, Version: string}}\n\t\t */\n\t\tthis.clientInfo = {Product: \"GoshawkDB\", Version: \"dev\"}\n\n\t\t/**\n\t\t * The product and version information we receive from the server during the initial handshake.\n\t\t * Will always be set after the promise returned by connect has resolved successfully.  May be null otherwise.\n\t\t * @type {?{Product: string, Version: string}}\n\t\t */\n\t\tthis.serverInfo = null\n\n\t\t/**\n\t\t * The namespace that the server assigns to this client.\n\t\t * Will always be set after the promise returned by connect has resolved successfully.  May be null otherwise.\n\t\t * @type {?ArrayBuffer}\n\t\t */\n\t\tthis.namespace = null\n\n\t\t/**\n\t\t * The roots that this client has access to.\n\t\t * Provided by the server during handshake.\n\t\t * Will always be set after the promise returned by connect has resolved successfully.  May be empty otherwise.\n\t\t * @type {{string: Ref}}\n\t\t */\n\t\tthis.roots = {}\n\n\t\t/** @private the function to deal with incoming messages */\n\t\tthis.messageHandler = null\n\t\t/** @private the top level cache that stores all the values and refs for objects the client knows about. */\n\t\tthis.cache = null\n\n\t\t// we control the first 8 bytes of transaction ids and new object ids (used during creation).\n\t\t// the namespace is appended to them when actually sent to the server.  We can't use normal js\n\t\t// numbers as javascript doesn't support 64 integers.  The only actual operation we need is 'increment'.\n\t\t/** @private */\n\t\tthis.nextTransactionId = Uint64.from(0, 0, 0, 0, 0, 0, 0, 0)\n\n\t\t/** @private the queue of transactions.*/\n\t\tthis.transactions = []\n\t\t/** @private the transaction currently being processed.*/\n\t\tthis.currentTransaction = null\n\t\t/** @private the timeout handle or null if no timeout to process a transaction is waiting*/\n\t\tthis.scheduledCallback = null\n\t}\n\n\t/**\n\t * Connects to the server.  If running in node, you will need to provide connectionOptions that include the client\n\t * certificate and key.\n\t *\n\t * @return {Promise<Connection, Error>}\n\t */\n\tconnect(connectionOptions) {\n\t\tconst serverHelloHandler = (message) => {\n\t\t\t// TODO? : a check could go here to ensure that the server version matches our version (from this.clientInfo.Version).\n\t\t\tthis.serverInfo = message\n\t\t\tthis.messageHandler = rootsHandler\n\t\t}\n\n\t\tconst rootsHandler = (message) => {\n\t\t\t// populate the roots\n\t\t\tthis.roots = {}\n\t\t\tfor (const root of message.Roots) {\n\t\t\t\tthis.roots[root.Name] = Ref.fromMessage(root)\n\t\t\t}\n\t\t\t// set the namespace\n\t\t\tthis.namespace = message.Namespace\n\n\t\t\t// now we're properly connected\n\t\t\tthis.messageHandler = null\n\t\t\tthis.cache = new ObjectCache(this.namespace)\n\t\t\tconsole.info(`Connection ${this.connectionId}: Connected to goshawkdb.`, this.serverInfo, this.clientInfo, this.namespace, this.roots)\n\t\t\tthis._onConnectionNegotiated(this)\n\t\t}\n\n\t\t// This promise should resolve with a working, setup connection if the connection makes its way to a fully\n\t\t// negotiated connection: i.e. it connects, it swaps info, it loads the roots and the namespace and initialises the\n\t\t// relevant state.\n\t\t// If anything happens to disrupt this process before it completes, this promise will reject.\n\t\treturn new Promise((resolve, reject) => {\n\t\t\tthis._onConnectionNegotiated = resolve\n\t\t\tthis.messageHandler = serverHelloHandler\n\t\t\tthis.link.connect(\n\t\t\t\t// on message\n\t\t\t\t(data) => {\n\t\t\t\t\tif (this.messageHandler) {\n\t\t\t\t\t\tthis.messageHandler(data)\n\t\t\t\t\t} else {\n\t\t\t\t\t\tconsole.warn(`Connection ${this.connectionId}: No handler found for message`, data)\n\t\t\t\t\t}\n\t\t\t\t},\n\t\t\t\t// on end - if the connection stops for any reason (error, or deliberate) before it resolves then it rejects.\n\t\t\t\t(e) => reject(e),\n\t\t\t\t// on open we start the handshake by sending the client info.\n\t\t\t\t() => this.link.send(this.clientInfo),\n\t\t\t\tconnectionOptions\n\t\t\t)\n\t\t})\n\t}\n\n\t/**\n\t * Queues a transaction for running, then ensures that transaction processing is happening.\n\t * The returned promise resolves with the value returned by the fn once the transaction has committed.  The fn may be\n\t * run multiple times and so should avoid side effects.\n\t * fn may be an asynchronous or a synchronous function.\n\t *\n\t * @param {function(txn: Transaction): {*|Promise<*, Error>}} fn the transaction function.  This function may be run multiple times and should rethrow any TransactionRetryNeeded exceptions.\n\t * @param {function(result: *, meta: *): *} onCommit a callback function that returns the result.  This fires when the\n\t * \t\t\t\t\t\tchanges in the transaction have been committed to the database.  You could also use the returned promise.\n\t * @returns {Promise<*, Error>} a promise that resolves to the result of the transaction function once the transaction submits or an error if it cannot.\n \t */\n\ttransact(fn, onCommit) {\n\t\tif (fn instanceof Function === false) {\n\t\t\tthrow new TypeError(`Connection ${this.connectionId}: Transaction argument must be a function, was ${String(fn)}`)\n\t\t}\n\n\t\treturn new Promise((resolve, reject) => {\n\t\t\tthis.transactions.push(new Transaction(fn, {onSuccess: (id, result) => {\n\t\t\t\tif (onCommit) {\n\t\t\t\t\ttry {\n\t\t\t\t\t\tonCommit(result, {id})\n\t\t\t\t\t} catch (e) {\n\t\t\t\t\t\tconsole.error(\"Transaction committed: failure during onCommit callback execution.\", e)\n\t\t\t\t\t}\n\t\t\t\t}\n\t\t\t\tresolve(result)\n\t\t\t}, onFail: reject}, this.roots, this.namespace, this.cache))\n\t\t\tthis.scheduleNextTransaction(false)\n\t\t})\n\t}\n\n\t/**\n\t * Closes the underlying link.\n\t */\n\tclose() {\n\t\tthis.link.close()\n\t}\n\n\t// private api\n\n\t/** @private\n\t * Actually runs the next queued transaction.\n\t */\n\texecuteNextTransaction() {\n\t\tif (this.currentTransaction != null) {\n\t\t\t// we're currently processing a transaction, exit without doing anything.\n\t\t\treturn\n\t\t}\n\n\t\tconst currentTransaction = this.currentTransaction = this.transactions.shift()\n\t\tconst txnIdWithNamespace = this.nextTransactionId.concat(this.namespace)\n\n\t\tconst succeed = (finalId, transactionResult) => {\n\t\t\tif (finalId) {\n\t\t\t\tcurrentTransaction.promoteCache(finalId)\n\t\t\t}\n\t\t\tcurrentTransaction.onSuccess(finalId, transactionResult)\n\t\t\tthis.scheduleNextTransaction(true)\n\t\t}\n\t\tconst retry = () => {\n\t\t\tcurrentTransaction.reset()\n\t\t\tthis.transactions.unshift(currentTransaction)\n\t\t\tthis.scheduleNextTransaction(true)\n\t\t}\n\t\tconst fail = (err) => {\n\t\t\tcurrentTransaction.onFail(err)\n\t\t\tthis.scheduleNextTransaction(true)\n\t\t}\n\t\tconst sendTransaction = (result) => {\n\t\t\tconst transactionMessage = currentTransaction.toMessage(txnIdWithNamespace)\n\t\t\tif (transactionMessage.ClientTxnSubmission.Actions.length > 0) {\n\t\t\t\tthis.link.request(transactionMessage)\n\t\t\t\t\t.then((response) => {\n\t\t\t\t\t\tthis.updateFromTransactionResponse(response)\n\t\t\t\t\t\tconst outcome = response.ClientTxnOutcome\n\t\t\t\t\t\tif (outcome.Commit) {\n\t\t\t\t\t\t\tsucceed(outcome.FinalId, result)\n\t\t\t\t\t\t} else if (outcome.Error != \"\") {\n\t\t\t\t\t\t\tfail(new TransactionRejectedError(outcome.Error))\n\t\t\t\t\t\t} else if (outcome.Abort) {\n\t\t\t\t\t\t\tretry()\n\t\t\t\t\t\t} else {\n\t\t\t\t\t\t\tfail(\"Unknown response message \" + JSON.stringify(outcome))\n\t\t\t\t\t\t}\n\t\t\t\t\t}).catch(fail)\n\t\t\t} else {\n\t\t\t\tsucceed(undefined, result)\n\t\t\t}\n\t\t}\n\n\t\t// we use asPromise, since the result of running fn might be a Promise.\n\t\tasPromise(() => {\n\t\t\treturn currentTransaction.fn(currentTransaction)\n\t\t}).catch( (e) => {\n\t\t\tif (e instanceof TransactionRetryNeeded === false) {\n\t\t\t\tthrow e\n\t\t\t}\n\t\t}).then(sendTransaction, fail)\n\t}\n\n\t/** @private\n\t * Updates the top level connection cache and counters based on a response from the server.\n\t * @param response the msgpack response.\n\t */\n\tupdateFromTransactionResponse(response) {\n\t\t// Responses contain a final transaction id.  We take the first 8 bytes and increment it.\n\t\tthis.nextTransactionId = Uint64.fromBinary(response.ClientTxnOutcome.FinalId).inc()\n\t\t// If we received an Abort message, then we may also have received some cache update instructions.\n\t\tif (response.ClientTxnOutcome.Abort) {\n\t\t\tfor (let update of response.ClientTxnOutcome.Abort) {\n\t\t\t\tconst otherTxnId = update.Version.buffer\n\t\t\t\tfor (let action of update.Actions) {\n\t\t\t\t\tconst id = action.VarId\n\t\t\t\t\tif (action.Delete) {\n\t\t\t\t\t\tconsole.debug(`Connection ${this.connectionId}: Removing ${binaryToHex(id)} from cache.`)\n\t\t\t\t\t\tthis.cache.remove(id)\n\t\t\t\t\t} else {\n\t\t\t\t\t\tconst writeData = action.Write || action.Create\n\t\t\t\t\t\tif (writeData) {\n\t\t\t\t\t\t\tthis.cache.get(id).update(otherTxnId, writeData.Value.buffer, writeData.References.map(Ref.fromMessage))\n\t\t\t\t\t\t}\n\t\t\t\t\t}\n\t\t\t\t}\n\t\t\t}\n\t\t}\n\t}\n\n\t/** @private\n\t * If there is no transaction currently processing and we haven't scheduled one\n\t * and there is a transaction waiting to be processed, then schedule it.\n\t * @param {boolean} clearCurrentTransaction if true, this will first clear the current transaction.\n\t */\n\tscheduleNextTransaction(clearCurrentTransaction) {\n\t\tif (clearCurrentTransaction) {\n\t\t\tthis.currentTransaction = null\n\t\t}\n\t\tif (this.scheduledCallback == null && this.currentTransaction == null && this.transactions.length > 0) {\n\t\t\tthis.scheduledCallback = setTimeout(() => {\n\t\t\t\tthis.scheduledCallback = null\n\t\t\t\tthis.executeNextTransaction()\n\t\t\t}, 0)\n\t\t}\n\t}\n}\n\nmodule.exports = Connection",
     "static": true,
     "longname": "src/connection.js",
     "access": null,
@@ -682,7 +682,7 @@
     "longname": "src/connection.js~Connection#transact",
     "access": null,
     "description": "Queues a transaction for running, then ensures that transaction processing is happening.\nThe returned promise resolves with the value returned by the fn once the transaction has committed.  The fn may be\nrun multiple times and so should avoid side effects.\nfn may be an asynchronous or a synchronous function.",
-    "lineNumber": 134,
+    "lineNumber": 136,
     "unknown": [
       {
         "tagName": "@returns",
@@ -700,6 +700,16 @@
         "optional": false,
         "name": "fn",
         "description": "the transaction function.  This function may be run multiple times and should rethrow any TransactionRetryNeeded exceptions."
+      },
+      {
+        "nullable": null,
+        "types": [
+          "function(result: *, meta: *): *"
+        ],
+        "spread": false,
+        "optional": false,
+        "name": "onCommit",
+        "description": "a callback function that returns the result.  This fires when the\n\t\t\t\t\t\tchanges in the transaction have been committed to the database.  You could also use the returned promise."
       }
     ],
     "return": {
@@ -722,7 +732,7 @@
     "longname": "src/connection.js~Connection#close",
     "access": null,
     "description": "Closes the underlying link.",
-    "lineNumber": 148,
+    "lineNumber": 159,
     "params": []
   },
   {
@@ -736,7 +746,7 @@
     "longname": "src/connection.js~Connection#executeNextTransaction",
     "access": "private",
     "description": null,
-    "lineNumber": 157,
+    "lineNumber": 168,
     "params": []
   },
   {
@@ -750,7 +760,7 @@
     "longname": "src/connection.js~Connection#updateFromTransactionResponse",
     "access": "private",
     "description": null,
-    "lineNumber": 218,
+    "lineNumber": 229,
     "params": [
       {
         "nullable": null,
@@ -773,7 +783,7 @@
     "longname": "src/connection.js~Connection#nextTransactionId",
     "access": null,
     "description": null,
-    "lineNumber": 220,
+    "lineNumber": 231,
     "undocument": true,
     "unknown": [
       {
@@ -798,7 +808,7 @@
     "longname": "src/connection.js~Connection#scheduleNextTransaction",
     "access": "private",
     "description": null,
-    "lineNumber": 246,
+    "lineNumber": 257,
     "params": [
       {
         "nullable": null,
@@ -821,7 +831,7 @@
     "longname": "src/connection.js~Connection#currentTransaction",
     "access": null,
     "description": null,
-    "lineNumber": 248,
+    "lineNumber": 259,
     "undocument": true,
     "unknown": [
       {
@@ -844,7 +854,7 @@
     "longname": "src/connection.js~Connection#scheduledCallback",
     "access": null,
     "description": null,
-    "lineNumber": 251,
+    "lineNumber": 262,
     "undocument": true,
     "unknown": [
       {
@@ -867,7 +877,7 @@
     "longname": "src/connection.js~Connection#scheduledCallback",
     "access": null,
     "description": null,
-    "lineNumber": 252,
+    "lineNumber": 263,
     "undocument": true,
     "unknown": [
       {
@@ -3326,7 +3336,7 @@
     "__docId__": 141,
     "kind": "file",
     "name": "src/transaction.js",
-    "content": "const Ref = require('./ref')\nconst {TransactionRetryNeeded, CapabilityDenied, RootNotFoundError} = require('./errors')\nconst {toArrayBuffer} = require('./utils')\nconst Uint64 = require('./uint64')\n\n/** @private */\nconst nextNewObjectId = Uint64.from(0, 0, 0, 0, 0, 0, 0, 0)\n\n/**\n * A transaction represents an attempt to make a modification to the database.\n *\n * The code associated with it may be required to run multiple times before it\n * successfully completes.  Care must be taken to make sure this will not\n * break the client environment.\n *\n * Transactions are acquired by calling {@link Connection#transact}.\n */\nclass Transaction {\n\n\t/** @private */\n\tconstructor(txnFn, {onSuccess, onFail}, roots, namespace, parentCache) {\n\t\t/** @private */\n\t\tthis.onSuccess = onSuccess;\n\n\t\t/** @private */\n\t\tthis.onFail = onFail;\n\n\t\t/** @private */\n\t\tthis.shouldRetry = false\n\n\t\t/** @private */\n\t\tthis.hasCacheMissed = false\n\n\t\t/** @private */\n\t\tthis.namespace = namespace\n\n\t\t/**\n\t\t * The roots that this client has access to.\n\t\t * @type {{string: Ref}}\n\t\t */\n\t\tthis.roots = roots\n\n\t\t/** @private */\n\t\tthis.fn = txnFn\n\n\t\t/** @private */\n\t\tthis.parentCache = parentCache\n\n\t\t/** @private */\n\t\tthis.cache = parentCache.getTemporaryView()\n\t}\n\n\t/**\n\t * Gets a reference to a root by the root name.\n\t * @throws {RootNotFoundError} if the root isn't present.\n\t * @param {string} rootName the name of the root to get.\n\t * @returns {Ref} a reference to the root specified.\n\t */\n\troot(rootName) {\n\t\tif (rootName in this.roots === false) {\n\t\t\tthrow new RootNotFoundError(`Root '${rootName}' was not found.  Available roots were '${Object.keys(this.roots).join(\"', '\")}'.`)\n\t\t}\n\t\treturn this.roots[rootName]\n\t}\n\n\t/**\n\t * Reads the value and references from an object pointed to by a Ref.\n\t * @param {Ref} ref a reference to the object to read from.\n\t * @returns {{value:ArrayBuffer, refs:Ref[]}}\n\t * @throws {CapabilityDenied} if ref does not have read capability.\n\t * @throws {TransactionRetryNeeded} if the object is not in cache. Do not catch this without rethrowing it.\n\t */\n\tread(ref) {\n\t\tif (ref instanceof Ref == false) {\n\t\t\tthrow new TypeError(`Can only read a reference; you tried to read from ${String(ref)}`)\n\t\t}\n\t\tif (!ref.read) {\n\t\t\tthrow new CapabilityDenied(`Unable to read using reference ${ref.toString()}, as it doesn't allow reads.`)\n\t\t}\n\t\tconst id = ref.varId\n\t\tconst cacheEntry = this.cache.get(id)\n\t\tif (cacheEntry.hasData() === false) {\n\t\t\tthis.hasCacheMissed = true\n\t\t}\n\t\treturn cacheEntry.read()\n\t}\n\n\t/**\n\t * Changes the value an dreferences of an object pointed to by a Ref.\n\t * @param {Ref} ref a reference to the object to be written.\n\t * @param {ArrayBuffer|Buffer|TypedArray} value the new value to be stored in the object.\n\t * @param {Ref[]} refs the references from this object to other objects.\n\t */\n\twrite(ref, value, refs) {\n\t\tif (ref instanceof Ref == false) {\n\t\t\tthrow new TypeError(`Can only write with a reference; you tried to write to ${String(ref)}.`)\n\t\t}\n\t\tif (!ref.write) {\n\t\t\tthrow new CapabilityDenied(`Unable to write using reference ${ref.toString()}, as it doesn't allow writes.`)\n\t\t}\n\t\tvalue = toArrayBuffer(value)\n\t\tconst id = ref.varId\n\t\tconst cacheEntry = this.cache.get(id)\n\t\tcacheEntry.write(value, refs)\n\t}\n\n\t/**\n\t * Creates a new object and returns the reference to it.\n\t * @param {ArrayBuffer|Buffer|TypedArray} value the value that the new object will be created with.\n\t * @param {Ref[]} refs the references that the new object will be created with.  This will default to the empty array.\n\t * @returns {Ref} a reference to the newly created object.\n\t */\n\tcreate(value, refs = []) {\n\t\tvalue = toArrayBuffer(value)\n\t\tconst newId = this.getNewObjectId()\n\t\tconst cacheEntry = this.cache.get(newId)\n\t\tcacheEntry.create(value, refs)\n\t\treturn new Ref(new Uint8Array(newId), true, true)\n\t}\n\n\t/**\n\t * Stops the current transaction, and waits for any of the values that have been\n\t * read to change before rerunning.  No further transactions will be processed while\n\t * a transaction is waiting.\n\t *\n\t * Internally, this method throws a TransactionRetryNeeded error.  If you catch it\n\t * and do not rethrow it, you will stop the retry behaviour from working.\n\t *\n\t * @throws {TransactionRetryNeeded}\n\t */\n\tretry() {\n\t\tthis.shouldRetry = true\n\t\tthrow new TransactionRetryNeeded(\"Transaction code called retry.\")\n\t}\n\n\t/**\n\t * Runs a nested transaction inside this transaction.\n\t *\n\t * If a nested transaction fails, its modifications will not be seen by the parent transaction.\n\t *\n\t * @param {function} fn the transaction function.  This function may be run multiple times and should rethrow any\n\t * \t\t\t\t\t\t\tTransactionRetryNeeded exceptions.\n\t * @returns {Promise<*, Error>} a promise that resolves to the result of the transaction function once the transaction\n\t * \t\t\t\t\t\t\tsubmits or an error if it cannot.\n\t */\n\ttransact(fn) {\n\t\tif (fn instanceof Function === false) {\n\t\t\tthrow new TypeError(\"Transaction argument must be a function.\")\n\t\t}\n\t\t// txnFn, {onSuccess, onFail}, roots, namespace, parentCache\n\t\tconst nestedTransaction = new Transaction(fn, {onSuccess: this.onSuccess, onFail: this.onFail}, this.roots, this.namespace, this.cache)\n\t\tlet resultPromise = undefined\n\t\ttry {\n\t\t\tresultPromise = Promise.resolve(fn(nestedTransaction))\n\t\t} catch (e) {\n\t\t\tif (e instanceof TransactionRetryNeeded) {\n\t\t\t\tthis.shouldRetry = true\n\t\t\t}\n\t\t\tthrow e\n\t\t}\n\n\t\treturn resultPromise\n\t\t\t.then((result) => {\n\t\t\t\tnestedTransaction.promoteCache(undefined)\n\t\t\t\treturn result\n\t\t\t})\n\t}\n\n\t// private API\n\n\t/** @private\n\t * Gets the object id to use for the next `txn.create` and increments the counter.\n\t * @returns {Uint8Array}\n\t */\n\tgetNewObjectId() {\n\t\tconst objId = nextNewObjectId.concat(this.namespace)\n\t\tnextNewObjectId.inc()\n\t\treturn new Uint8Array(objId)\n\t}\n\n\n\t/** @private\n\t * Prepares this transaction to be run again.*/\n\treset() {\n\t\tthis.cache = this.parentCache.getTemporaryView()\n\t\tthis.shouldRetry = false\n\t\tthis.hasCacheMissed = false\n\t}\n\n\t/** @private\n\t * This transaction has completed successfully, notify the parent.*/\n\tpromoteCache(finalTxnId) {\n\t\tthis.cache.promote(finalTxnId)\n\t}\n\n\t/** @private */\n\ttoMessage(txnId) {\n\t\tconst anyChange = (entry) => entry.hasBeenCreated || entry.hasBeenWritten || entry.hasBeenRead\n\t\tconst justReads = (entry) => entry.hasBeenRead\n\t\tconst justCacheMisses = (entry) => entry.hasBeenRead && entry.hasData() === false\n\n\t\tlet filter = anyChange\n\t\tif (this.shouldRetry) {\n\t\t\tfilter = justReads\n\t\t} else if (this.hasCacheMissed) {\n\t\t\tfilter = justCacheMisses\n\t\t}\n\n\t\tconst actions = this.cache.getActions(this.namespace, filter)\n\t\treturn {\n\t\t\tClientTxnSubmission: {\n\t\t\t\tId: txnId,\n\t\t\t\tRetry: this.shouldRetry,\n\t\t\t\tActions: actions\n\t\t\t}\n\t\t}\n\t}\n}\n\nmodule.exports = Transaction",
+    "content": "const Ref = require('./ref')\nconst {TransactionRetryNeeded, CapabilityDenied, RootNotFoundError} = require('./errors')\nconst {toArrayBuffer} = require('./utils')\nconst Uint64 = require('./uint64')\n\n/** @private */\nconst nextNewObjectId = Uint64.from(0, 0, 0, 0, 0, 0, 0, 0)\n\n/**\n * A transaction represents an attempt to make a modification to the database.\n *\n * The code associated with it may be required to run multiple times before it\n * successfully completes.  Care must be taken to make sure this will not\n * break the client environment.\n *\n * Transactions are acquired by calling {@link Connection#transact}.\n */\nclass Transaction {\n\n\t/** @private */\n\tconstructor(txnFn, {onSuccess, onFail}, roots, namespace, parentCache) {\n\t\t/** @private */\n\t\tthis.onSuccess = onSuccess;\n\n\t\t/** @private */\n\t\tthis.onFail = onFail;\n\n\t\t/** @private */\n\t\tthis.shouldRetry = false\n\n\t\t/** @private */\n\t\tthis.hasCacheMissed = false\n\n\t\t/** @private */\n\t\tthis.namespace = namespace\n\n\t\t/**\n\t\t * The roots that this client has access to.\n\t\t * @type {{string: Ref}}\n\t\t */\n\t\tthis.roots = roots\n\n\t\t/** @private */\n\t\tthis.fn = txnFn\n\n\t\t/** @private */\n\t\tthis.parentCache = parentCache\n\n\t\t/** @private */\n\t\tthis.cache = parentCache.getTemporaryView()\n\t}\n\n\t/**\n\t * Gets a reference to a root by the root name.\n\t * @throws {RootNotFoundError} if the root isn't present.\n\t * @param {string} rootName the name of the root to get.\n\t * @returns {Ref} a reference to the root specified.\n\t */\n\troot(rootName) {\n\t\tif (rootName in this.roots === false) {\n\t\t\tthrow new RootNotFoundError(`Root '${rootName}' was not found.  Available roots were '${Object.keys(this.roots).join(\"', '\")}'.`)\n\t\t}\n\t\treturn this.roots[rootName]\n\t}\n\n\t/**\n\t * Reads the value and references from an object pointed to by a Ref.\n\t * @param {Ref} ref a reference to the object to read from.\n\t * @returns {{value:ArrayBuffer, refs:Ref[]}}\n\t * @throws {CapabilityDenied} if ref does not have read capability.\n\t * @throws {TransactionRetryNeeded} if the object is not in cache. Do not catch this without rethrowing it.\n\t */\n\tread(ref) {\n\t\tif (ref instanceof Ref == false) {\n\t\t\tthrow new TypeError(`Can only read a reference; you tried to read from ${String(ref)}`)\n\t\t}\n\t\tif (!ref.read) {\n\t\t\tthrow new CapabilityDenied(`Unable to read using reference ${ref.toString()}, as it doesn't allow reads.`)\n\t\t}\n\t\tconst id = ref.varId\n\t\tconst cacheEntry = this.cache.get(id)\n\t\tif (cacheEntry.hasData() === false) {\n\t\t\tthis.hasCacheMissed = true\n\t\t}\n\t\treturn cacheEntry.read()\n\t}\n\n\t/**\n\t * Changes the value an dreferences of an object pointed to by a Ref.\n\t * @param {Ref} ref a reference to the object to be written.\n\t * @param {ArrayBuffer|Buffer|TypedArray} value the new value to be stored in the object.\n\t * @param {Ref[]} refs the references from this object to other objects.\n\t */\n\twrite(ref, value, refs) {\n\t\tif (ref instanceof Ref == false) {\n\t\t\tthrow new TypeError(`Can only write with a reference; you tried to write to ${String(ref)}.`)\n\t\t}\n\t\tif (!ref.write) {\n\t\t\tthrow new CapabilityDenied(`Unable to write using reference ${ref.toString()}, as it doesn't allow writes.`)\n\t\t}\n\t\tvalue = toArrayBuffer(value)\n\t\tconst id = ref.varId\n\t\tconst cacheEntry = this.cache.get(id)\n\t\tcacheEntry.write(value, refs)\n\t}\n\n\t/**\n\t * Creates a new object and returns the reference to it.\n\t * @param {ArrayBuffer|Buffer|TypedArray} value the value that the new object will be created with.\n\t * @param {Ref[]} refs the references that the new object will be created with.  This will default to the empty array.\n\t * @returns {Ref} a reference to the newly created object.\n\t */\n\tcreate(value, refs = []) {\n\t\tvalue = toArrayBuffer(value)\n\t\tconst newId = this.getNewObjectId()\n\t\tconst cacheEntry = this.cache.get(newId)\n\t\tcacheEntry.create(value, refs)\n\t\treturn new Ref(new Uint8Array(newId), true, true)\n\t}\n\n\t/**\n\t * Stops the current transaction, and waits for any of the values that have been\n\t * read to change before rerunning.  No further transactions will be processed while\n\t * a transaction is waiting.\n\t *\n\t * Internally, this method throws a TransactionRetryNeeded error.  If you catch it\n\t * and do not rethrow it, you will stop the retry behaviour from working.\n\t *\n\t * @throws {TransactionRetryNeeded}\n\t */\n\tretry() {\n\t\tthis.shouldRetry = true\n\t\tthrow new TransactionRetryNeeded(\"Transaction code called retry.\")\n\t}\n\n\t/**\n\t * Runs a nested transaction inside this transaction.\n\t *\n\t * If a nested transaction fails, its modifications will not be seen by the parent transaction.\n\t *\n\t * @param {function} fn the transaction function.  This function may be run multiple times and should rethrow any\n\t * \t\t\t\t\t\t\tTransactionRetryNeeded exceptions.\n\t * @param {function(result: *, meta: *): *} onCommit a callback function that returns the result of the transaction\n\t * \t\t\t\t\t\t\twhen it commits.  While the returned promise will resolve immediately the subtransaction is\n\t * \t\t\t\t\t\t\tsuccessfully registered by the outer transaction, the onCommit callback will only be fired when the\n\t * \t\t\t\t\t\t  mutations in the subtransaction have successfully been committed to the database.\n\t * @returns {Promise<*, Error>} a promise that resolves to the result of the transaction function once the transaction\n\t * \t\t\t\t\t\t\tsubmits or an error if it cannot.\n\t */\n\ttransact(fn, onCommit) {\n\t\tif (fn instanceof Function === false) {\n\t\t\tthrow new TypeError(\"Transaction argument must be a function.\")\n\t\t}\n\t\t// txnFn, {onSuccess, onFail}, roots, namespace, parentCache\n\t\tconst nestedTransaction = new Transaction(fn, {onSuccess: this.onSuccess, onFail: this.onFail}, this.roots, this.namespace, this.cache)\n\t\tlet resultPromise = undefined\n\t\ttry {\n\t\t\tresultPromise = Promise.resolve(fn(nestedTransaction))\n\t\t} catch (e) {\n\t\t\tif (e instanceof TransactionRetryNeeded) {\n\t\t\t\tthis.shouldRetry = true\n\t\t\t}\n\t\t\tthrow e\n\t\t}\n\n\t\treturn resultPromise\n\t\t\t.then((result) => {\n\t\t\t\tnestedTransaction.promoteCache(undefined)\n\t\t\t\tconst oldSuccess = this.onSuccess\n\t\t\t\tthis.onSuccess = (id, result) => {\n\t\t\t\t\tif (onCommit) {\n\t\t\t\t\t\ttry {\n\t\t\t\t\t\t\tonCommit(result, {id})\n\t\t\t\t\t\t} catch (err) {\n\t\t\t\t\t\t\tconsole.error(\"Transaction completed, error in subtransaction onCommit callback.\", err)\n\t\t\t\t\t\t}\n\t\t\t\t\t}\n\t\t\t\t\toldSuccess(id, result)\n\t\t\t\t}\n\t\t\t\treturn result\n\t\t\t})\n\t}\n\n\t// private API\n\n\t/** @private\n\t * Gets the object id to use for the next `txn.create` and increments the counter.\n\t * @returns {Uint8Array}\n\t */\n\tgetNewObjectId() {\n\t\tconst objId = nextNewObjectId.concat(this.namespace)\n\t\tnextNewObjectId.inc()\n\t\treturn new Uint8Array(objId)\n\t}\n\n\n\t/** @private\n\t * Prepares this transaction to be run again.*/\n\treset() {\n\t\tthis.cache = this.parentCache.getTemporaryView()\n\t\tthis.shouldRetry = false\n\t\tthis.hasCacheMissed = false\n\t}\n\n\t/** @private\n\t * This transaction has completed successfully, notify the parent.*/\n\tpromoteCache(finalTxnId) {\n\t\tthis.cache.promote(finalTxnId)\n\t}\n\n\t/** @private */\n\ttoMessage(txnId) {\n\t\tconst anyChange = (entry) => entry.hasBeenCreated || entry.hasBeenWritten || entry.hasBeenRead\n\t\tconst justReads = (entry) => entry.hasBeenRead\n\t\tconst justCacheMisses = (entry) => entry.hasBeenRead && entry.hasData() === false\n\n\t\tlet filter = anyChange\n\t\tif (this.shouldRetry) {\n\t\t\tfilter = justReads\n\t\t} else if (this.hasCacheMissed) {\n\t\t\tfilter = justCacheMisses\n\t\t}\n\n\t\tconst actions = this.cache.getActions(this.namespace, filter)\n\t\treturn {\n\t\t\tClientTxnSubmission: {\n\t\t\t\tId: txnId,\n\t\t\t\tRetry: this.shouldRetry,\n\t\t\t\tActions: actions\n\t\t\t}\n\t\t}\n\t}\n}\n\nmodule.exports = Transaction",
     "static": true,
     "longname": "src/transaction.js",
     "access": null,
@@ -3945,7 +3955,7 @@
     "longname": "src/transaction.js~Transaction#transact",
     "access": null,
     "description": "Runs a nested transaction inside this transaction.\n\nIf a nested transaction fails, its modifications will not be seen by the parent transaction.",
-    "lineNumber": 146,
+    "lineNumber": 150,
     "unknown": [
       {
         "tagName": "@returns",
@@ -3962,6 +3972,16 @@
         "optional": false,
         "name": "fn",
         "description": "the transaction function.  This function may be run multiple times and should rethrow any\n\t\t\t\t\t\t\tTransactionRetryNeeded exceptions."
+      },
+      {
+        "nullable": null,
+        "types": [
+          "function(result: *, meta: *): *"
+        ],
+        "spread": false,
+        "optional": false,
+        "name": "onCommit",
+        "description": "a callback function that returns the result of the transaction\n\t\t\t\t\t\t\twhen it commits.  While the returned promise will resolve immediately the subtransaction is\n\t\t\t\t\t\t\tsuccessfully registered by the outer transaction, the onCommit callback will only be fired when the\n\t\t\t\t\t\t  mutations in the subtransaction have successfully been committed to the database."
       }
     ],
     "return": {
@@ -3982,7 +4002,7 @@
     "longname": "src/transaction.js~Transaction#shouldRetry",
     "access": null,
     "description": null,
-    "lineNumber": 157,
+    "lineNumber": 161,
     "undocument": true,
     "unknown": [
       {
@@ -3998,6 +4018,29 @@
   },
   {
     "__docId__": 167,
+    "kind": "member",
+    "name": "onSuccess",
+    "memberof": "src/transaction.js~Transaction",
+    "static": false,
+    "longname": "src/transaction.js~Transaction#onSuccess",
+    "access": null,
+    "description": null,
+    "lineNumber": 170,
+    "undocument": true,
+    "unknown": [
+      {
+        "tagName": "@_undocument",
+        "tagValue": ""
+      }
+    ],
+    "type": {
+      "types": [
+        "*"
+      ]
+    }
+  },
+  {
+    "__docId__": 168,
     "kind": "method",
     "name": "getNewObjectId",
     "memberof": "src/transaction.js~Transaction",
@@ -4007,7 +4050,7 @@
     "longname": "src/transaction.js~Transaction#getNewObjectId",
     "access": "private",
     "description": null,
-    "lineNumber": 175,
+    "lineNumber": 190,
     "unknown": [
       {
         "tagName": "@returns",
@@ -4025,7 +4068,7 @@
     }
   },
   {
-    "__docId__": 168,
+    "__docId__": 169,
     "kind": "method",
     "name": "reset",
     "memberof": "src/transaction.js~Transaction",
@@ -4035,11 +4078,11 @@
     "longname": "src/transaction.js~Transaction#reset",
     "access": "private",
     "description": null,
-    "lineNumber": 184,
+    "lineNumber": 199,
     "params": []
   },
   {
-    "__docId__": 169,
+    "__docId__": 170,
     "kind": "member",
     "name": "cache",
     "memberof": "src/transaction.js~Transaction",
@@ -4047,7 +4090,7 @@
     "longname": "src/transaction.js~Transaction#cache",
     "access": null,
     "description": null,
-    "lineNumber": 185,
+    "lineNumber": 200,
     "undocument": true,
     "unknown": [
       {
@@ -4062,7 +4105,7 @@
     }
   },
   {
-    "__docId__": 170,
+    "__docId__": 171,
     "kind": "member",
     "name": "shouldRetry",
     "memberof": "src/transaction.js~Transaction",
@@ -4070,30 +4113,7 @@
     "longname": "src/transaction.js~Transaction#shouldRetry",
     "access": null,
     "description": null,
-    "lineNumber": 186,
-    "undocument": true,
-    "unknown": [
-      {
-        "tagName": "@_undocument",
-        "tagValue": ""
-      }
-    ],
-    "type": {
-      "types": [
-        "boolean"
-      ]
-    }
-  },
-  {
-    "__docId__": 171,
-    "kind": "member",
-    "name": "hasCacheMissed",
-    "memberof": "src/transaction.js~Transaction",
-    "static": false,
-    "longname": "src/transaction.js~Transaction#hasCacheMissed",
-    "access": null,
-    "description": null,
-    "lineNumber": 187,
+    "lineNumber": 201,
     "undocument": true,
     "unknown": [
       {
@@ -4109,6 +4129,29 @@
   },
   {
     "__docId__": 172,
+    "kind": "member",
+    "name": "hasCacheMissed",
+    "memberof": "src/transaction.js~Transaction",
+    "static": false,
+    "longname": "src/transaction.js~Transaction#hasCacheMissed",
+    "access": null,
+    "description": null,
+    "lineNumber": 202,
+    "undocument": true,
+    "unknown": [
+      {
+        "tagName": "@_undocument",
+        "tagValue": ""
+      }
+    ],
+    "type": {
+      "types": [
+        "boolean"
+      ]
+    }
+  },
+  {
+    "__docId__": 173,
     "kind": "method",
     "name": "promoteCache",
     "memberof": "src/transaction.js~Transaction",
@@ -4118,7 +4161,7 @@
     "longname": "src/transaction.js~Transaction#promoteCache",
     "access": "private",
     "description": null,
-    "lineNumber": 192,
+    "lineNumber": 207,
     "params": [
       {
         "name": "finalTxnId",
@@ -4129,7 +4172,7 @@
     ]
   },
   {
-    "__docId__": 173,
+    "__docId__": 174,
     "kind": "method",
     "name": "toMessage",
     "memberof": "src/transaction.js~Transaction",
@@ -4139,7 +4182,7 @@
     "longname": "src/transaction.js~Transaction#toMessage",
     "access": "private",
     "description": null,
-    "lineNumber": 197,
+    "lineNumber": 212,
     "params": [
       {
         "name": "txnId",
@@ -4155,7 +4198,7 @@
     }
   },
   {
-    "__docId__": 174,
+    "__docId__": 175,
     "kind": "file",
     "name": "src/uint64.js",
     "content": "const {binaryToHex, toArrayBuffer} = require('./utils')\n\n/**\n * A representation of a Uint64, since otherwise javascript can't do them.\n */\nclass Uint64 {\n\t/**\n\t * Makes a new Uint64 from a Uint8Array\n\t * @param {Uint8Array} uintArray an array of bytes to be used to represent this 64 bit integer.\n\t */\n\tconstructor(uintArray = new Uint8Array(8)) {\n\t\tif (uintArray instanceof Uint8Array === false) {\n\t\t\tthrow new TypeError(\"Uint64 source must be a Uint8Array, Uint64.from(bytes), Uint64.fromTypedArray, Uint64.fromArrayBuffer might suit your needs better.\")\n\t\t}\n\t\t/**\n\t\t * @private\n\t\t * @type {Uint8Array}\n\t\t */\n\t\tthis.data = uintArray\n\n\t\t/**\n\t\t * An arraybuffer representation of this value.\n\t\t * @type {ArrayBuffer}\n\t\t */\n\t\tthis.buffer = this.data.buffer\n\t}\n\n\t/**\n\t * Creates a Uint64 from bytes\n\t * @param {number[]} bytes\n\t * @returns {Uint64}\n\t */\n\tstatic from(...bytes) {\n\t\tconst result = new Uint64()\n\t\tresult.set(...bytes)\n\t\treturn result\n\t}\n\n\t/**\n\t * Creates a Uint64 from the first 8 bytes of one of the binary forms.\n\t * @param {ArrayBuffer|Buffer|TypedArray} binary\n\t * @returns {Uint64}\n\t */\n\tstatic fromBinary(binary) {\n\t\treturn Uint64.fromArrayBuffer(toArrayBuffer(binary))\n\t}\n\n\t/**\n\t * Creates a Uint64 from an array buffer. Potentially with a byte offset.\n\t * Only the first 8 bytes will be taken.\n\t * @param {ArrayBuffer} arrayBuffer\n\t * @param {number} byteOffset the starting position in the array buffer. Defaults to 0.\n\t * @returns {Uint64}\n\t */\n\tstatic fromArrayBuffer(arrayBuffer, byteOffset = 0) {\n\t\treturn new Uint64(new Uint8Array(arrayBuffer.slice(byteOffset, byteOffset + 8)))\n\t}\n\n\t/**\n\t * Modifies this Uint64 to represent the succeeding integer.  If\n\t * this represents the largest integer the Uint64 can represent, it will wrap to 0.\n\t * @returns {Uint64} this, modified Uint64.\n\t */\n\tinc() {\n\t\tfor (let idx = this.data.length - 1; idx >= 0; --idx) {\n\t\t\tthis.data[idx] += 1\n\t\t\tif (this.data[idx] != 0) {\n\t\t\t\tbreak\n\t\t\t}\n\t\t}\n\t\treturn this\n\t}\n\n\t/**\n\t * @returns {Uint64} a copy of this Uint64.\n\t */\n\tclone() {\n\t\tconst dst = new ArrayBuffer(this.data.byteLength)\n\t\tconst uintArray = new Uint8Array(dst)\n\t\tuintArray.set(this.data)\n\t\treturn new Uint64(uintArray)\n\t}\n\n\t/**\n\t * Set the last last bytes.length bytes.\n\t * @param {number[]} bytes the bytes to set.\n\t */\n\tset(...bytes) {\n\t\tif (bytes[0] instanceof Uint64) {\n\t\t\tthis.data.set(bytes[0].data, 0)\n\t\t} else {\n\t\t\tfor (let i = 0; i < bytes.length; ++i) {\n\t\t\t\tthis.data[this.data.length - bytes.length + i] = bytes[i]\n\t\t\t}\n\t\t}\n\t}\n\n\t/**\n\t * Returns an array buffer where this Uint64 is the first 8 bytes and\n\t * the passed buffer is the subsequent bytes.\n\t * @param {ArrayBuffer|Buffer|TypedArray} buffer the subsequent bytes.\n\t * @returns {ArrayBuffer}\n\t */\n\tconcat(buffer) {\n\t\tbuffer = toArrayBuffer(buffer)\n\t\tconst result = new Uint8Array(this.data.length + buffer.byteLength)\n\t\tresult.set(this.data, 0)\n\t\tresult.set(new Uint8Array(buffer), this.data.length)\n\t\treturn result.buffer\n\t}\n\n\t/**\n\t * A string representation of this Uint64.  This string representation is for debugging purposes\n\t * and does not form part of the public API.\n\t */\n\ttoString() {\n\t\treturn binaryToHex(this.data)\n\t}\n}\n\nmodule.exports = Uint64",
@@ -4166,7 +4209,7 @@
     "lineNumber": 1
   },
   {
-    "__docId__": 175,
+    "__docId__": 176,
     "kind": "variable",
     "name": "binaryToHex",
     "memberof": "src/uint64.js",
@@ -4192,7 +4235,7 @@
     }
   },
   {
-    "__docId__": 176,
+    "__docId__": 177,
     "kind": "class",
     "name": "Uint64",
     "memberof": "src/uint64.js",
@@ -4207,7 +4250,7 @@
     "interface": false
   },
   {
-    "__docId__": 177,
+    "__docId__": 178,
     "kind": "constructor",
     "name": "constructor",
     "memberof": "src/uint64.js~Uint64",
@@ -4232,7 +4275,7 @@
     ]
   },
   {
-    "__docId__": 178,
+    "__docId__": 179,
     "kind": "member",
     "name": "data",
     "memberof": "src/uint64.js~Uint64",
@@ -4251,7 +4294,7 @@
     }
   },
   {
-    "__docId__": 179,
+    "__docId__": 180,
     "kind": "member",
     "name": "buffer",
     "memberof": "src/uint64.js~Uint64",
@@ -4270,7 +4313,7 @@
     }
   },
   {
-    "__docId__": 180,
+    "__docId__": 181,
     "kind": "method",
     "name": "from",
     "memberof": "src/uint64.js~Uint64",
@@ -4309,7 +4352,7 @@
     }
   },
   {
-    "__docId__": 181,
+    "__docId__": 182,
     "kind": "method",
     "name": "fromBinary",
     "memberof": "src/uint64.js~Uint64",
@@ -4350,7 +4393,7 @@
     }
   },
   {
-    "__docId__": 182,
+    "__docId__": 183,
     "kind": "method",
     "name": "fromArrayBuffer",
     "memberof": "src/uint64.js~Uint64",
@@ -4399,7 +4442,7 @@
     }
   },
   {
-    "__docId__": 183,
+    "__docId__": 184,
     "kind": "method",
     "name": "inc",
     "memberof": "src/uint64.js~Uint64",
@@ -4427,7 +4470,7 @@
     }
   },
   {
-    "__docId__": 184,
+    "__docId__": 185,
     "kind": "method",
     "name": "clone",
     "memberof": "src/uint64.js~Uint64",
@@ -4455,7 +4498,7 @@
     }
   },
   {
-    "__docId__": 185,
+    "__docId__": 186,
     "kind": "method",
     "name": "set",
     "memberof": "src/uint64.js~Uint64",
@@ -4480,7 +4523,7 @@
     ]
   },
   {
-    "__docId__": 186,
+    "__docId__": 187,
     "kind": "method",
     "name": "concat",
     "memberof": "src/uint64.js~Uint64",
@@ -4521,7 +4564,7 @@
     }
   },
   {
-    "__docId__": 187,
+    "__docId__": 188,
     "kind": "method",
     "name": "toString",
     "memberof": "src/uint64.js~Uint64",
@@ -4540,7 +4583,7 @@
     }
   },
   {
-    "__docId__": 188,
+    "__docId__": 189,
     "kind": "file",
     "name": "src/utils.js",
     "content": "/**\n * @param {ArrayBuffer|Buffer|TypedArray} binary the binary we want to represent in hex.\n * @returns {string} a hexadecimal representation of this binary.\n */\nexports.binaryToHex = function binaryToHex(binary) {\n\tlet uintarray = null\n\tif (binary instanceof Uint8Array) {\n\t\tuintarray = binary\n\t} else {\n\t\tuintarray = new Uint8Array(toArrayBuffer(binary))\n\t}\n\treturn \"0x\" + Array.from(uintarray).map((x) => ('0' + x.toString(16)).substr(-2)).join(\"\")\n}\n\n/**\n * Tries to convert a binary value into an array buffer.\n * @param {ArrayBuffer|Buffer|TypedArray} value the value to convert.\n * @returns {ArrayBuffer}\n */\nexports.toArrayBuffer = function toArrayBuffer(value) {\n\tif (value instanceof ArrayBuffer) {\n\t\treturn value\n\t} else if (value instanceof Buffer) {\n\t\treturn value.buffer.slice(value.offset, value.offset + value.length)\n\t} else if (value instanceof ArrayBuffer === false && value.buffer && value.buffer instanceof ArrayBuffer) {\n\t\treturn value.buffer\n\t}\n\tthrow new TypeError(\"Unable to convert value to array buffer \" + value)\n}\n\n/**\n * Runs the provided function, and wraps the output or thrown error in a promise.\n * This is useful for writing code that deals with functions that may be either synchronous or\n * asynchronous.\n * @param {function} fn the function that will be evaluated to populate the promise.\n * @returns {Promise}\n */\nexports.asPromise = function asPromise(fn) {\n\ttry {\n\t\treturn Promise.resolve(fn())\n\t} catch (e) {\n\t\treturn Promise.reject(e)\n\t}\n}",
@@ -4551,7 +4594,7 @@
     "lineNumber": 1
   },
   {
-    "__docId__": 189,
+    "__docId__": 190,
     "kind": "function",
     "name": "binaryToHex",
     "memberof": "src/utils.js",
@@ -4595,7 +4638,7 @@
     }
   },
   {
-    "__docId__": 190,
+    "__docId__": 191,
     "kind": "function",
     "name": "toArrayBuffer",
     "memberof": "src/utils.js",
@@ -4639,7 +4682,7 @@
     }
   },
   {
-    "__docId__": 191,
+    "__docId__": 192,
     "kind": "function",
     "name": "asPromise",
     "memberof": "src/utils.js",
@@ -4681,7 +4724,7 @@
     }
   },
   {
-    "__docId__": 193,
+    "__docId__": 194,
     "kind": "external",
     "name": "Infinity",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Infinity",
@@ -4693,7 +4736,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 194,
+    "__docId__": 195,
     "kind": "external",
     "name": "NaN",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/NaN",
@@ -4705,7 +4748,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 195,
+    "__docId__": 196,
     "kind": "external",
     "name": "undefined",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/undefined",
@@ -4717,7 +4760,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 196,
+    "__docId__": 197,
     "kind": "external",
     "name": "null",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/null",
@@ -4729,7 +4772,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 197,
+    "__docId__": 198,
     "kind": "external",
     "name": "Object",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Object",
@@ -4741,7 +4784,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 198,
+    "__docId__": 199,
     "kind": "external",
     "name": "object",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Object",
@@ -4753,7 +4796,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 199,
+    "__docId__": 200,
     "kind": "external",
     "name": "Function",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Function",
@@ -4765,7 +4808,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 200,
+    "__docId__": 201,
     "kind": "external",
     "name": "function",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Function",
@@ -4777,7 +4820,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 201,
+    "__docId__": 202,
     "kind": "external",
     "name": "Boolean",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Boolean",
@@ -4789,7 +4832,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 202,
+    "__docId__": 203,
     "kind": "external",
     "name": "boolean",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Boolean",
@@ -4801,7 +4844,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 203,
+    "__docId__": 204,
     "kind": "external",
     "name": "Symbol",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Symbol",
@@ -4813,7 +4856,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 204,
+    "__docId__": 205,
     "kind": "external",
     "name": "Error",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Error",
@@ -4825,7 +4868,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 205,
+    "__docId__": 206,
     "kind": "external",
     "name": "EvalError",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/EvalError",
@@ -4837,7 +4880,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 206,
+    "__docId__": 207,
     "kind": "external",
     "name": "InternalError",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/InternalError",
@@ -4849,7 +4892,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 207,
+    "__docId__": 208,
     "kind": "external",
     "name": "RangeError",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/RangeError",
@@ -4861,7 +4904,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 208,
+    "__docId__": 209,
     "kind": "external",
     "name": "ReferenceError",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/ReferenceError",
@@ -4873,7 +4916,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 209,
+    "__docId__": 210,
     "kind": "external",
     "name": "SyntaxError",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/SyntaxError",
@@ -4885,7 +4928,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 210,
+    "__docId__": 211,
     "kind": "external",
     "name": "TypeError",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/TypeError",
@@ -4897,7 +4940,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 211,
+    "__docId__": 212,
     "kind": "external",
     "name": "URIError",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/URIError",
@@ -4909,7 +4952,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 212,
+    "__docId__": 213,
     "kind": "external",
     "name": "Number",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Number",
@@ -4921,7 +4964,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 213,
+    "__docId__": 214,
     "kind": "external",
     "name": "number",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Number",
@@ -4933,7 +4976,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 214,
+    "__docId__": 215,
     "kind": "external",
     "name": "Date",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Date",
@@ -4945,7 +4988,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 215,
+    "__docId__": 216,
     "kind": "external",
     "name": "String",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/String",
@@ -4957,7 +5000,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 216,
+    "__docId__": 217,
     "kind": "external",
     "name": "string",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/String",
@@ -4969,7 +5012,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 217,
+    "__docId__": 218,
     "kind": "external",
     "name": "RegExp",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/RegExp",
@@ -4981,7 +5024,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 218,
+    "__docId__": 219,
     "kind": "external",
     "name": "Array",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Array",
@@ -4993,7 +5036,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 219,
+    "__docId__": 220,
     "kind": "external",
     "name": "Int8Array",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Int8Array",
@@ -5005,7 +5048,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 220,
+    "__docId__": 221,
     "kind": "external",
     "name": "Uint8Array",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Uint8Array",
@@ -5017,7 +5060,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 221,
+    "__docId__": 222,
     "kind": "external",
     "name": "Uint8ClampedArray",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Uint8ClampedArray",
@@ -5029,7 +5072,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 222,
+    "__docId__": 223,
     "kind": "external",
     "name": "Int16Array",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Int16Array",
@@ -5041,7 +5084,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 223,
+    "__docId__": 224,
     "kind": "external",
     "name": "Uint16Array",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Uint16Array",
@@ -5053,7 +5096,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 224,
+    "__docId__": 225,
     "kind": "external",
     "name": "Int32Array",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Int32Array",
@@ -5065,7 +5108,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 225,
+    "__docId__": 226,
     "kind": "external",
     "name": "Uint32Array",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Uint32Array",
@@ -5077,7 +5120,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 226,
+    "__docId__": 227,
     "kind": "external",
     "name": "Float32Array",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Float32Array",
@@ -5089,7 +5132,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 227,
+    "__docId__": 228,
     "kind": "external",
     "name": "Float64Array",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Float64Array",
@@ -5101,7 +5144,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 228,
+    "__docId__": 229,
     "kind": "external",
     "name": "Map",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Map",
@@ -5113,7 +5156,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 229,
+    "__docId__": 230,
     "kind": "external",
     "name": "Set",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Set",
@@ -5125,7 +5168,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 230,
+    "__docId__": 231,
     "kind": "external",
     "name": "WeakMap",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/WeakMap",
@@ -5137,7 +5180,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 231,
+    "__docId__": 232,
     "kind": "external",
     "name": "WeakSet",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/WeakSet",
@@ -5149,7 +5192,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 232,
+    "__docId__": 233,
     "kind": "external",
     "name": "ArrayBuffer",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/ArrayBuffer",
@@ -5161,7 +5204,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 233,
+    "__docId__": 234,
     "kind": "external",
     "name": "DataView",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/DataView",
@@ -5173,7 +5216,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 234,
+    "__docId__": 235,
     "kind": "external",
     "name": "JSON",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/JSON",
@@ -5185,7 +5228,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 235,
+    "__docId__": 236,
     "kind": "external",
     "name": "Promise",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Promise",
@@ -5197,7 +5240,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 236,
+    "__docId__": 237,
     "kind": "external",
     "name": "Generator",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Generator",
@@ -5209,7 +5252,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 237,
+    "__docId__": 238,
     "kind": "external",
     "name": "GeneratorFunction",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/GeneratorFunction",
@@ -5221,7 +5264,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 238,
+    "__docId__": 239,
     "kind": "external",
     "name": "Reflect",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Reflect",
@@ -5233,7 +5276,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 239,
+    "__docId__": 240,
     "kind": "external",
     "name": "Proxy",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Proxy",
@@ -5246,7 +5289,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 241,
+    "__docId__": 242,
     "kind": "external",
     "name": "CanvasRenderingContext2D",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/API/CanvasRenderingContext2D",
@@ -5258,7 +5301,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 242,
+    "__docId__": 243,
     "kind": "external",
     "name": "DocumentFragment",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/API/DocumentFragment",
@@ -5270,7 +5313,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 243,
+    "__docId__": 244,
     "kind": "external",
     "name": "Element",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/API/Element",
@@ -5282,7 +5325,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 244,
+    "__docId__": 245,
     "kind": "external",
     "name": "Event",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/API/Event",
@@ -5294,7 +5337,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 245,
+    "__docId__": 246,
     "kind": "external",
     "name": "Node",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/API/Node",
@@ -5306,7 +5349,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 246,
+    "__docId__": 247,
     "kind": "external",
     "name": "NodeList",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/API/NodeList",
@@ -5318,7 +5361,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 247,
+    "__docId__": 248,
     "kind": "external",
     "name": "XMLHttpRequest",
     "externalLink": "https://developer.mozilla.org/en/docs/Web/API/XMLHttpRequest",
@@ -5330,7 +5373,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 248,
+    "__docId__": 249,
     "kind": "external",
     "name": "AudioContext",
     "externalLink": "https://developer.mozilla.org/en/docs/Web/API/AudioContext",

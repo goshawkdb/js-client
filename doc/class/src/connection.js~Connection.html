@@ -286,7 +286,7 @@
         <p>
           
           
-          <span data-ice="name"><span><a href="class/src/connection.js~Connection.html#instance-method-transact">transact</a></span></span><span data-ice="signature">(fn: <span><span><a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Function">function</a></span><span>(txn: <span><a href="class/src/transaction.js~Transaction.html">Transaction</a></span>)</span>: <span>{*</span></span> | <span>Promise&lt;*, Error&gt;}</span>): <span><a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Promise">Promise</a></span>&lt;<span>*</span>, <span><a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Error">Error</a></span>&gt;</span>
+          <span data-ice="name"><span><a href="class/src/connection.js~Connection.html#instance-method-transact">transact</a></span></span><span data-ice="signature">(fn: <span><span><a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Function">function</a></span><span>(txn: <span><a href="class/src/transaction.js~Transaction.html">Transaction</a></span>)</span>: <span>{*</span></span> | <span>Promise&lt;*, Error&gt;}</span>, onCommit: <span><span><a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Function">function</a></span><span>(result: <span>*</span>, meta: <span>*</span>)</span>: <span>*</span></span>): <span><a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Promise">Promise</a></span>&lt;<span>*</span>, <span><a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Error">Error</a></span>&gt;</span>
         </p>
       </div>
       <div>
@@ -507,7 +507,7 @@ Will always be set after the promise returned by connect has resolved successful
     <span class="right-info">
       
       
-      <span data-ice="source"><span><a href="file/src/connection.js.html#lineNumber148">source</a></span></span>
+      <span data-ice="source"><span><a href="file/src/connection.js.html#lineNumber159">source</a></span></span>
     </span>
   </h3>
 
@@ -620,11 +620,11 @@ certificate and key.</p>
     
     
     
-    <span data-ice="name">transact</span><span data-ice="signature">(fn: <span><span><a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Function">function</a></span><span>(txn: <span><a href="class/src/transaction.js~Transaction.html">Transaction</a></span>)</span>: <span>{*</span></span> | <span>Promise&lt;*, Error&gt;}</span>): <span><a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Promise">Promise</a></span>&lt;<span>*</span>, <span><a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Error">Error</a></span>&gt;</span>
+    <span data-ice="name">transact</span><span data-ice="signature">(fn: <span><span><a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Function">function</a></span><span>(txn: <span><a href="class/src/transaction.js~Transaction.html">Transaction</a></span>)</span>: <span>{*</span></span> | <span>Promise&lt;*, Error&gt;}</span>, onCommit: <span><span><a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Function">function</a></span><span>(result: <span>*</span>, meta: <span>*</span>)</span>: <span>*</span></span>): <span><a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Promise">Promise</a></span>&lt;<span>*</span>, <span><a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Error">Error</a></span>&gt;</span>
     <span class="right-info">
       
       
-      <span data-ice="source"><span><a href="file/src/connection.js.html#lineNumber134">source</a></span></span>
+      <span data-ice="source"><span><a href="file/src/connection.js.html#lineNumber136">source</a></span></span>
     </span>
   </h3>
 
@@ -652,6 +652,14 @@ fn may be an asynchronous or a synchronous function.</p>
       <td data-ice="type"><span><span><a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Function">function</a></span><span>(txn: <span><a href="class/src/transaction.js~Transaction.html">Transaction</a></span>)</span>: <span>{*</span></span> | <span>Promise&lt;*, Error&gt;}</span></td>
       <td data-ice="appendix"></td>
       <td data-ice="description"><p>the transaction function.  This function may be run multiple times and should rethrow any TransactionRetryNeeded exceptions.</p>
+</td>
+    </tr>
+<tr data-ice="property" data-depth="0">
+      <td data-ice="name" data-depth="0">onCommit</td>
+      <td data-ice="type"><span><span><a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Function">function</a></span><span>(result: <span>*</span>, meta: <span>*</span>)</span>: <span>*</span></span></td>
+      <td data-ice="appendix"></td>
+      <td data-ice="description"><p>a callback function that returns the result.  This fires when the
+                        changes in the transaction have been committed to the database.  You could also use the returned promise.</p>
 </td>
     </tr>
 </tbody>
