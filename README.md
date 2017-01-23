@@ -3,9 +3,9 @@
 A JavaScript client for GoshawkDB that works in node or the browser.
 
 Dev only links:
-* [Doc](https://rawgit.com/goshawkdb/js-client/master/doc/index.html)
+* [Doc](https://goshawkdb.github.io/js-client/)
 * [Explorer](https://rawgit.com/goshawkdb/visualizer/master/index.html)
-* Script tag: `<script type="text/javascript" src="https://rawgit.com/goshawkdb/js-client/master/dist/goshawkdb.browser.js"></script>`
+* Script tag: `<script type="text/javascript" src="https://goshawkdb.github.io/js-client/goshawkdb.browser.js"></script>`
 
 ## Notes for getting Started
 
@@ -104,7 +104,7 @@ If it's working, it will say 'GoshawkDB Server version dev. Websocket available 
 Include the client:
 
 ```html
-<script type="text/javascript" src="goshawkdb.browser.js"></script>
+<script type="text/javascript" src="https://goshawkdb.github.io/js-client/goshawkdb.browser.js"></script>
 ```
 
 The file `goshawkdb.browser.js` is located in the dist subfolder of this module.
