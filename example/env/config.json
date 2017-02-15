@@ -12,7 +12,7 @@
               "Read": true,
               "Write": true
             },
-	        "myRoot": {
+            "myRoot": {
               "Read": true,
               "Write": true
             }
