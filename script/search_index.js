@@ -540,16 +540,40 @@ window.esdocSearchIndex = [
     "method"
   ],
   [
+    "src/ref.js~ref#tomessage",
+    "class/src/ref.js~Ref.html#instance-method-toMessage",
+    "src/ref.js~Ref#toMessage",
+    "method"
+  ],
+  [
     "src/ref.js~ref#tostring",
     "class/src/ref.js~Ref.html#instance-method-toString",
     "src/ref.js~Ref#toString",
     "method"
   ],
   [
+    "src/ref.js~ref#varid",
+    "class/src/ref.js~Ref.html#instance-member-varId",
+    "src/ref.js~Ref#varId",
+    "member"
+  ],
+  [
     "src/ref.js~ref#write",
     "class/src/ref.js~Ref.html#instance-member-write",
     "src/ref.js~Ref#write",
     "member"
+  ],
+  [
+    "src/ref.js~ref.fromcapref",
+    "class/src/ref.js~Ref.html#static-method-fromCapRef",
+    "src/ref.js~Ref.fromCapRef",
+    "method"
+  ],
+  [
+    "src/ref.js~ref.frommessage",
+    "class/src/ref.js~Ref.html#static-method-fromMessage",
+    "src/ref.js~Ref.fromMessage",
+    "method"
   ],
   [
     "src/transaction.js",
@@ -598,6 +622,12 @@ window.esdocSearchIndex = [
     "class/src/transaction.js~Transaction.html#instance-method-write",
     "src/transaction.js~Transaction#write",
     "method"
+  ],
+  [
+    "src/transaction.js~typedarray",
+    "typedef/index.html#static-typedef-TypedArray",
+    "src/transaction.js~TypedArray",
+    "typedef"
   ],
   [
     "src/uint64.js",

@@ -46,6 +46,7 @@
 <li data-ice="doc"><span data-ice="kind" class="kind-function">F</span><span data-ice="name"><span><a href="function/index.html#static-function-asPromise">asPromise</a></span></span></li>
 <li data-ice="doc"><span data-ice="kind" class="kind-function">F</span><span data-ice="name"><span><a href="function/index.html#static-function-binaryToHex">binaryToHex</a></span></span></li>
 <li data-ice="doc"><span data-ice="kind" class="kind-function">F</span><span data-ice="name"><span><a href="function/index.html#static-function-toArrayBuffer">toArrayBuffer</a></span></span></li>
+<li data-ice="doc"><span data-ice="kind" class="kind-typedef">T</span><span data-ice="name"><span><a href="typedef/index.html#static-typedef-TypedArray">TypedArray</a></span></span></li>
 </ul>
 </div>
 </nav>
@@ -55,6 +56,10 @@
 const {TransactionRetryNeeded, CapabilityDenied, RootNotFoundError} = require(&apos;./errors&apos;)
 const {toArrayBuffer} = require(&apos;./utils&apos;)
 const Uint64 = require(&apos;./uint64&apos;)
+
+/**
+ * @typedef {Int8Array|Uint8Array|Uint8ClampedArray|Int16Array|Uint16Array|Int32Array|Uint32Array|Float32Array|Float64Array} TypedArray
+ */
 
 /** @private */
 const nextNewObjectId = Uint64.from(0, 0, 0, 0, 0, 0, 0, 0)
@@ -193,14 +198,10 @@ class Transaction {
 	 *
 	 * @param {function} fn the transaction function.  This function may be run multiple times and should rethrow any
 	 * 							TransactionRetryNeeded exceptions.
-	 * @param {function(result: *, meta: *): *} onCommit a callback function that returns the result of the transaction
-	 * 							when it commits.  While the returned promise will resolve immediately the subtransaction is
-	 * 							successfully registered by the outer transaction, the onCommit callback will only be fired when the
-	 * 						  mutations in the subtransaction have successfully been committed to the database.
 	 * @returns {Promise&lt;*, Error&gt;} a promise that resolves to the result of the transaction function once the transaction
 	 * 							submits or an error if it cannot.
 	 */
-	transact(fn, onCommit) {
+	transact(fn) {
 		if (fn instanceof Function === false) {
 			throw new TypeError(&quot;Transaction argument must be a function.&quot;)
 		}
@@ -219,17 +220,6 @@ class Transaction {
 		return resultPromise
 			.then((result) =&gt; {
 				nestedTransaction.promoteCache(undefined)
-				const oldSuccess = this.onSuccess
-				this.onSuccess = (id, result) =&gt; {
-					if (onCommit) {
-						try {
-							onCommit(result, {id})
-						} catch (err) {
-							console.error(&quot;Transaction completed, error in subtransaction onCommit callback.&quot;, err)
-						}
-					}
-					oldSuccess(id, result)
-				}
 				return result
 			})
 	}

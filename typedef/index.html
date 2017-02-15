@@ -2,8 +2,8 @@
 <html>
 <head>
   <meta charset="utf-8">
-  <base data-ice="baseUrl" href="../../">
-  <title data-ice="title">src/ref.js | API Document</title>
+  <base data-ice="baseUrl" href="../">
+  <title data-ice="title">Typedef | API Document</title>
   <link type="text/css" rel="stylesheet" href="css/style.css">
   <link type="text/css" rel="stylesheet" href="css/prettify-tomorrow.css">
   <script src="script/prettify/prettify.js"></script>
@@ -51,86 +51,87 @@
 </div>
 </nav>
 
-<div class="content" data-ice="content"><h1 data-ice="title">src/ref.js</h1>
-<pre class="source-code line-number raw-source-code"><code class="prettyprint linenums" data-ice="content">const {binaryToHex} = require(&apos;./utils&apos;)
+<div class="content" data-ice="content"><h1 data-ice="title">Typedef</h1>
+<div data-ice="summaries"><table class="summary" data-ice="summary">
+  <thead><tr><td data-ice="title" colspan="3">Static Public Summary</td></tr></thead>
+  <tbody>
+  
+  <tr data-ice="target">
+    <td>
+      <span class="access" data-ice="access">public</span>
+      
+      
+      
+      <span class="override" data-ice="override"></span>
+    </td>
+    <td>
+      <div>
+        <p>
+          
+          
+          <span data-ice="name"><span><a href="typedef/index.html#static-typedef-TypedArray">TypedArray</a></span></span><span data-ice="signature">: <span><a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Int8Array">Int8Array</a></span> | <span><a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Uint8Array">Uint8Array</a></span> | <span><a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Uint8ClampedArray">Uint8ClampedArray</a></span> | <span><a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Int16Array">Int16Array</a></span> | <span><a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Uint16Array">Uint16Array</a></span> | <span><a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Int32Array">Int32Array</a></span> | <span><a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Uint32Array">Uint32Array</a></span> | <span><a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Float32Array">Float32Array</a></span> | <span><a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Float64Array">Float64Array</a></span></span>
+        </p>
+      </div>
+      <div>
+        
+        
+        
+      </div>
+    </td>
+    <td>
+      
+      
+    </td>
+  </tr>
+</tbody>
+</table>
+</div>
+<div data-ice="details"><h2 data-ice="title">Static Public </h2>
 
-/**
- * A Ref represents a pointer to an object in the database.
- * Each Ref also carries with it some capabilities that determine
- * which of the actions `read` and `write` can be done with that reference.
- *
- * You can get a Ref either by looking at the roots of the transaction,
- * creating a new object or reading it from an objects references with
- * {@link Transaction#read}.
- */
-class Ref {
-	/** @private */
-	constructor(varId, read, write) {
-		if (varId instanceof Uint8Array == false) {
-			throw new TypeError(&quot;var id must be a uint8 array&quot;)
-		}
+<div class="detail" data-ice="detail">
+  <h3 data-ice="anchor" id="static-typedef-TypedArray">
+    <span class="access" data-ice="access">public</span>
+    
+    
+    
+    
+    
+    <span data-ice="name">TypedArray</span><span data-ice="signature">: <span><a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Int8Array">Int8Array</a></span> | <span><a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Uint8Array">Uint8Array</a></span> | <span><a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Uint8ClampedArray">Uint8ClampedArray</a></span> | <span><a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Int16Array">Int16Array</a></span> | <span><a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Uint16Array">Uint16Array</a></span> | <span><a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Int32Array">Int32Array</a></span> | <span><a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Uint32Array">Uint32Array</a></span> | <span><a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Float32Array">Float32Array</a></span> | <span><a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Float64Array">Float64Array</a></span></span>
+    <span class="right-info">
+      
+      
+      <span data-ice="source"><span><a href="file/src/transaction.js.html#lineNumberundefined">source</a></span></span>
+    </span>
+  </h3>
 
-		/**
-		 * The goshawkdb id of the object this reference refers to.
-		 */
-		this.varId = varId
+  
+  
+  
+  
 
-		/**
-		 * Whether this reference can be used to read the object.
-		 * @type {boolean}
-		 */
-		this.read = read
-		/**
-		 * Whether this reference can be used to write the object.
-		 * @type {boolean}
-		 */
-		this.write = write
-	}
+  
 
-	static fromCapRef(capability, varId) {
-		return new Ref(varId, capability.Read, capability.Write)
-	}
+  <div data-ice="properties">
+</div>
 
-	static fromMessage(msg) {
-		return Ref.fromCapRef(msg.Capability, msg.VarId)
-	}
+  
 
-	/**
-	 * Checks to see if this reference and the other reference
-	 * refer to the same object in the database.
-	 * @param {Ref} otherRef
-	 * @returns {boolean} true if the other reference points to the same object, false otherwise.
-	 */
-	sameReferent(otherRef) {
-		return binaryToHex(this.varId) === binaryToHex(otherRef.varId)
-	}
+  
 
-	/**
-	 * @returns {Ref} a new reference the same as this one, but that cannot be used to read.
-	 */
-	denyRead() {
-		return new Ref(this.varId, false, this.write)
-	}
+  
 
-	/**
-	 * @returns {Ref} a new reference the same as this one, but that cannot be used to write.
-	 */
-	denyWrite() {
-		return new Ref(this.varId, this.read, false)
-	}
+  
 
-	/** @returns {string} a representation of this reference.  String representations are for debug only and are not considered part of the public API. */
-	toString() {
-		return `{Ref ${binaryToHex(this.varId)} ${this.read ? &apos;r&apos; : &apos;-&apos;}${this.write ? &apos;w&apos; : &apos;-&apos;}}`
-	}
+  
 
-	toMessage() {
-		return {VarId: this.varId.buffer, Capability: {Read: this.read, Write: this.write}}
-	}
-}
+  
 
-module.exports = Ref</code></pre>
+  
 
+  
+  
+</div>
+</div>
 </div>
 
 <footer class="footer">

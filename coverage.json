@@ -1,7 +1,7 @@
 {
-  "coverage": "97.91%",
-  "expectCount": 48,
-  "actualCount": 47,
+  "coverage": "92.3%",
+  "expectCount": 52,
+  "actualCount": 48,
   "files": {
     "src/errors.js": {
       "expectCount": 9,
@@ -21,9 +21,13 @@
       "undocumentLines": []
     },
     "src/ref.js": {
-      "expectCount": 7,
-      "actualCount": 7,
-      "undocumentLines": []
+      "expectCount": 11,
+      "actualCount": 8,
+      "undocumentLines": [
+        36,
+        40,
+        73
+      ]
     },
     "src/transaction.js": {
       "expectCount": 8,
