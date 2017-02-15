@@ -3,6 +3,10 @@ const {TransactionRetryNeeded, CapabilityDenied, RootNotFoundError} = require('.
 const {toArrayBuffer} = require('./utils')
 const Uint64 = require('./uint64')
 
+/**
+ * @typedef {Int8Array|Uint8Array|Uint8ClampedArray|Int16Array|Uint16Array|Int32Array|Uint32Array|Float32Array|Float64Array} TypedArray
+ */
+
 /** @private */
 const nextNewObjectId = Uint64.from(0, 0, 0, 0, 0, 0, 0, 0)
 
@@ -140,14 +144,10 @@ class Transaction {
 	 *
 	 * @param {function} fn the transaction function.  This function may be run multiple times and should rethrow any
 	 * 							TransactionRetryNeeded exceptions.
-	 * @param {function(result: *, meta: *): *} onCommit a callback function that returns the result of the transaction
-	 * 							when it commits.  While the returned promise will resolve immediately the subtransaction is
-	 * 							successfully registered by the outer transaction, the onCommit callback will only be fired when the
-	 * 						  mutations in the subtransaction have successfully been committed to the database.
 	 * @returns {Promise<*, Error>} a promise that resolves to the result of the transaction function once the transaction
 	 * 							submits or an error if it cannot.
 	 */
-	transact(fn, onCommit) {
+	transact(fn) {
 		if (fn instanceof Function === false) {
 			throw new TypeError("Transaction argument must be a function.")
 		}
@@ -166,17 +166,6 @@ class Transaction {
 		return resultPromise
 			.then((result) => {
 				nestedTransaction.promoteCache(undefined)
-				const oldSuccess = this.onSuccess
-				this.onSuccess = (id, result) => {
-					if (onCommit) {
-						try {
-							onCommit(result, {id})
-						} catch (err) {
-							console.error("Transaction completed, error in subtransaction onCommit callback.", err)
-						}
-					}
-					oldSuccess(id, result)
-				}
 				return result
 			})
 	}

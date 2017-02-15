@@ -18,7 +18,6 @@ class Ref {
 
 		/**
 		 * The goshawkdb id of the object this reference refers to.
-		 * @private
 		 */
 		this.varId = varId
 
@@ -34,12 +33,10 @@ class Ref {
 		this.write = write
 	}
 
-	/** @private */
 	static fromCapRef(capability, varId) {
 		return new Ref(varId, capability.Read, capability.Write)
 	}
 
-	/** @private */
 	static fromMessage(msg) {
 		return Ref.fromCapRef(msg.Capability, msg.VarId)
 	}
@@ -73,7 +70,6 @@ class Ref {
 		return `{Ref ${binaryToHex(this.varId)} ${this.read ? 'r' : '-'}${this.write ? 'w' : '-'}}`
 	}
 
-	/** @private */
 	toMessage() {
 		return {VarId: this.varId.buffer, Capability: {Read: this.read, Write: this.write}}
 	}

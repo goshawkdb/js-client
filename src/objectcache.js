@@ -88,14 +88,6 @@ class ObjectCacheEntry {
 							return srcRefs.slice()
 						}
 					}
-				},
-				version: {
-					set: () => {
-						throw new MutationNotAllowed("Cannot set references without a transaction.write call.")
-					},
-					get: () => {
-						return this.version
-					}
 				}
 			})
 
