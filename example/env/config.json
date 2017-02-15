@@ -1,6 +1,6 @@
 {
     "ClusterId": "myCluster",
-    "Version": 22,
+    "Version": 1,
     "Hosts": [
         "localhost"
     ],
