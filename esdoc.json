@@ -1,5 +1,5 @@
 {
-	"source":"./src", 
-	"destination":"./dist",
-  	"plugins": [{"name": "esdoc-node"}]
+    "source":"./src",
+    "destination":"./dist",
+    "plugins": [{"name": "esdoc-node"}]
 }
