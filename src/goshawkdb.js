@@ -17,7 +17,10 @@ module.exports = class GoshawkDb {
 	 * @param {*} connectionOptions in node.js, the connection options are used to make the connection.
 	 * 				They are for the WS module and are defined [here](https://github.com/websockets/ws/blob/master/doc/ws.md).
 	 * 				The options should include `key`, `cert` and if you don't want it to check
-	 * 				the server certificates, `{rejectUnauthorized: false}`.
+	 * 				the server certificates, `{rejectUnauthorized: false}`. It is recommended
+	 * 				to check the server identity by setting `{rejectUnauthorized: true}` and
+	 * 				providing the server cluster cerificate as a string in PEM format in
+	 * 				`options.ca`.
 	 * @return {Promise<Connection, Error>} A promise that resolves with a connection or rejects with an error.
 	 */
 	static connect(url, connectionOptions) {

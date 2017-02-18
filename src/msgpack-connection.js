@@ -23,6 +23,8 @@ class MsgpackConnection {
 	}
 
 	connect(onMessage, onEnd, onOpen, connectionOptions) {
+		connectionOptions = connectionOptions || {}
+		connectionOptions.ciphers = "ECDHE-ECDSA-AES128-GCM-SHA256"
 		this.onMessage = onMessage
 		// onEnd triggers onError or onClose.
 		this.onEnd = onEnd

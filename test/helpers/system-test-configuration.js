@@ -22,6 +22,11 @@ if (process.env.GOSHAWKDB_DEFAULT_CLIENT_KEYPAIR) {
 	clientKeyPath = process.env.GOSHAWKDB_DEFAULT_CLIENT_KEYPAIR
 }
 
+let clusterCertPath = path.join(__dirname, ".", "clusterCert.pem")
+if (process.env.GOSHAWKDB_DEFAULT_CLUSTER_CERT) {
+	clusterCertPath = process.env.GOSHAWKDB_DEFAULT_CLUSTER_CERT
+}
+
 const clusterHosts = process.env.GOSHAWKDB_DEFAULT_CLUSTER_HOSTS_WSS || "localhost:7895;"
 const [firstHost, firstPort = 7895] = clusterHosts.split(';')[0].split(":")
 
@@ -31,9 +36,10 @@ module.exports = {
 	host: firstHost,
 	port: firstPort,
 	root: process.env.GOSHAWKDB_ROOT_NAME || 'test',
-	rejectUnauthorized: false,
+	rejectUnauthorized: true,
 	cert: `-----BEGIN CERTIFICATE-----\n${pemFile["CERTIFICATE"]}\n-----END CERTIFICATE-----`,
-	key: `-----BEGIN EC PRIVATE KEY-----\n${pemFile["EC PRIVATE KEY"]}\n-----END EC PRIVATE KEY-----`
+	key: `-----BEGIN EC PRIVATE KEY-----\n${pemFile["EC PRIVATE KEY"]}\n-----END EC PRIVATE KEY-----`,
+	ca: fs.readFileSync(clusterCertPath)
 }
 
 console.log("Using client configuration from", clientKeyPath, ":", module.exports)
