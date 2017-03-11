@@ -76,6 +76,23 @@ function setupThenTransactionTest(setup, test) {
 	}
 }
 
+function connectionTest(test) {
+	return (t) => {
+		return new Promise((resolve, reject) => {
+			goshawkdb
+				.connect(`wss://${connectionOptions.host}:${connectionOptions.port}/ws`, connectionOptions)
+				.then((conn) => {
+					try {
+						return Promise.resolve(test(t, conn))
+					} catch (e) {
+						return Promise.reject(e)
+					}
+				}).then(resolve, reject)
+		})
+	}
+}
+
+exports.connectionTest = connectionTest
 exports.connectionOptions = connectionOptions
 exports.testRootName = connectionOptions.root
 exports.setupThenTransactionTest = setupThenTransactionTest

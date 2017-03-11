@@ -128,27 +128,16 @@ class Connection {
 	 * run multiple times and so should avoid side effects.
 	 * fn may be an asynchronous or a synchronous function.
 	 *
-	 * @param {function(txn: Transaction): {*|Promise<*, Error>}} fn the transaction function.  This function may be run multiple times and should rethrow any TransactionRetryNeeded exceptions.
-	 * @param {function(result: *, meta: *): *} onCommit a callback function that returns the result.  This fires when the
-	 * 						changes in the transaction have been committed to the database.  You could also use the returned promise.
-	 * @returns {Promise<*, Error>} a promise that resolves to the result of the transaction function once the transaction submits or an error if it cannot.
+	 * @param {function(txn:Transaction):{*|Promise<*,Error>}} txnFn the transaction function.  This function may be run multiple times and should rethrow any TransactionRetryNeeded exceptions.
+	 * @returns {Promise<*,Error>} a promise that resolves to the result of the transaction function once the transaction submits or an error if it cannot.
  	 */
-	transact(fn, onCommit) {
-		if (fn instanceof Function === false) {
-			throw new TypeError(`Connection ${this.connectionId}: Transaction argument must be a function, was ${String(fn)}`)
+	transact(txnFn) {
+		if (txnFn instanceof Function === false) {
+			throw new TypeError(`Connection ${this.connectionId}: Transaction argument must be a function, was ${String(txnFn)}`)
 		}
 
 		return new Promise((resolve, reject) => {
-			this.transactions.push(new Transaction(fn, {onSuccess: (id, result) => {
-				if (onCommit) {
-					try {
-						onCommit(result, {id})
-					} catch (e) {
-						console.error("Transaction committed: failure during onCommit callback execution.", e)
-					}
-				}
-				resolve(result)
-			}, onFail: reject}, this.roots, this.namespace, this.cache))
+			this.transactions.push(new Transaction(txnFn, {onSuccess: resolve, onFail: reject}, this.roots, this.namespace, this.cache))
 			this.scheduleNextTransaction(false)
 		})
 	}
@@ -178,7 +167,7 @@ class Connection {
 			if (finalId) {
 				currentTransaction.promoteCache(finalId)
 			}
-			currentTransaction.onSuccess(finalId, transactionResult)
+			currentTransaction.onSuccess(transactionResult)
 			this.scheduleNextTransaction(true)
 		}
 		const retry = () => {

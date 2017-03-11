@@ -11,6 +11,10 @@
             "test": {
               "Read": true,
               "Write": true
+            },
+            "myRoot": {
+              "Read": true,
+              "Write": true
             }
         }
     }
