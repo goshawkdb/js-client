@@ -19,7 +19,7 @@ class Connection {
 		/** @private used in logging to distinguish different connections */
 		this.connectionId = (nextConnectionNumber++)
 		/** @private */
-		this.link = new MsgpackConnection(url, ("000" + this.connectionId).substr(-3))
+		this.link = new MsgpackConnection(url, ("000" + this.connectionId).slice(-3))
 
 		/**
 		 * The product and version information we sent to the server during the initial connection handshake.
@@ -93,7 +93,7 @@ class Connection {
 			// now we're properly connected
 			this.messageHandler = null
 			this.cache = new ObjectCache(this.namespace)
-			console.info(`Connection ${this.connectionId}: Connected to goshawkdb.`, this.serverInfo, this.clientInfo, this.namespace, this.roots)
+			console.info("Connection %s: Connected to goshawkdb.", this.connectionId, this.serverInfo, this.clientInfo, this.namespace, this.roots)
 			this._onConnectionNegotiated(this)
 		}
 
@@ -113,14 +113,23 @@ class Connection {
 						console.warn(`Connection ${this.connectionId}: No handler found for message`, data)
 					}
 				},
-				// on end - if the connection stops for any reason (error, or deliberate) before it resolves then it rejects.
-				(e) => reject(e),
+				// on end - if the connection stops for any reason (error, or deliberate).
+				(e) => {
+					reject(e)
+					this.onclose(e)
+				},
 				// on open we start the handshake by sending the client info.
 				() => this.link.send(this.clientInfo),
 				connectionOptions
 			)
 		})
 	}
+
+	/**
+	 * A callback that can be set to be told when the connection closes, either in error, or deliberately.
+	 * @param closeEvent the websocket event explaining why the connection has closed.
+	 */
+	onclose(closeEvent) {}
 
 	/**
 	 * Queues a transaction for running, then ensures that transaction processing is happening.

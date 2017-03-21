@@ -15,11 +15,11 @@ class MsgpackConnection {
 			codec: msgpack.createCodec({binarraybuffer: true})
 		}
 		// all the callbacks!
-		this.onOpen = null
-		this.onEnd = null
-		this.onMessage = null
-		this.onClose = null
-		this.onError = null
+		this.onOpen = noop
+		this.onEnd = noop
+		this.onMessage = noop
+		this.onClose = noop
+		this.onError = noop
 	}
 
 	connect(onMessage, onEnd, onOpen, connectionOptions) {
@@ -30,43 +30,32 @@ class MsgpackConnection {
 		this.onEnd = onEnd
 		this.onOpen = onOpen
 		const websocket = this.websocket = new WebSocket(this.url, undefined, connectionOptions)
-		websocket.binaryType = 'arraybuffer'
-		websocket.onopen = (evt) => {
-			console.debug(`Connection ${this.connectionLabel}: Connection Open`)
-			if (this.onOpen) {
+		Object.assign(websocket, {
+			binaryType: 'arraybuffer',
+			onopen: (evt) => {
+				console.debug("Connection %s: Connection Open", this.connectionLabel)
 				this.onOpen(evt)
-			}
-		}
-		websocket.onclose = (evt) => {
-			console.debug(`Connection ${this.connectionLabel}: Connection Closed`, evt.code, evt.reason)
-			if (this.onEnd) {
+			},
+			onclose: (evt) => {
+				console.debug("Connection %s: Connection Closed", this.connectionLabel, evt.code, evt.reason)
 				this.onEnd(evt)
-			}
-			if (this.onClose) {
 				this.onClose(evt)
-			}
-		}
-		websocket.onerror = (evt) => {
-			console.error(`Connection ${this.connectionLabel}: Connection Error`, evt.code, evt.reason)
-			if (this.onEnd) {
+			},
+			onerror: (evt) => {
+				console.error("Connection %s: Connection Error", this.connectionLabel, evt.code, evt.reason)
 				this.onEnd(evt)
-			}
-			if (this.onError) {
 				this.onError(evt)
-			}
-		}
-		websocket.onmessage = (messageEvent) => {
-			const data = msgpack.decode(new Uint8Array(messageEvent.data));
-			console.debug(`${this.connectionLabel} <`, data)
-
-			if (this.onMessage) {
+			},
+			onmessage: (messageEvent) => {
+				const data = msgpack.decode(new Uint8Array(messageEvent.data));
+				console.debug("%s <", this.connectionLabel, data)
 				this.onMessage(data)
 			}
-		}
+		})
 	}
 
 	send(message) {
-		console.debug(`${this.connectionLabel} >`, message)
+		console.debug("%s >", this.connectionLabel, message)
 		this.websocket.send(msgpack.encode(message, this.options))
 	}
 
@@ -99,3 +88,5 @@ class MsgpackConnection {
 }
 
 module.exports = MsgpackConnection
+
+function noop() {}

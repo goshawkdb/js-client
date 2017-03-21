@@ -3,11 +3,15 @@ exports.Throwable = class Throwable extends Error {
 	/** @param {string} message a human readable description of this error. */
 	constructor(message) {
 		super(message)
-		/** the type of this error.
-		 * @type {string} */
+		/**
+		 * The type of this error.
+		 * @type {string}
+		 */
 		this.name = this.constructor.name
-		/** human readable description of this error.
-		 * @type {string} */
+		/**
+		 * Human readable description of this error.
+		 * @type {string}
+		 */
 		this.message = message
 	}
 }

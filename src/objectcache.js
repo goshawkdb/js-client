@@ -135,8 +135,8 @@ class ObjectCacheEntry {
 	}
 
 	create(value, refs) {
-		if (value instanceof ArrayBuffer != true) {
-			throw new TypeError("values should be array buffers : " + value)
+		if (value instanceof ArrayBuffer !== true) {
+			throw new TypeError("Values should be array buffers : " + value)
 		}
 		checkRefs(refs)
 		this.hasBeenCreated = true

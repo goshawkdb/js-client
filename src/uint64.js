@@ -10,24 +10,26 @@ class Uint64 {
 	 */
 	constructor(uintArray = new Uint8Array(8)) {
 		if (uintArray instanceof Uint8Array === false) {
-			throw new TypeError("Uint64 source must be a Uint8Array, Uint64.from(bytes), Uint64.fromTypedArray, Uint64.fromArrayBuffer might suit your needs better.")
+			throw new TypeError("Uint64 source must be a Uint8Array. Uint64.from(bytes), Uint64.fromTypedArray, Uint64.fromArrayBuffer might suit your needs better.")
 		}
 		/**
 		 * @private
 		 * @type {Uint8Array}
 		 */
 		this.data = uintArray
+	}
 
-		/**
-		 * An arraybuffer representation of this value.
-		 * @type {ArrayBuffer}
-		 */
-		this.buffer = this.data.buffer
+	/**
+	 * An arraybuffer representation of this value.
+	 * @type {ArrayBuffer}
+	 */
+	get buffer() {
+		return this.data.buffer
 	}
 
 	/**
 	 * Creates a Uint64 from bytes
-	 * @param {number[]} bytes
+	 * @param {...number} bytes the byte values to initialise a new Uint64 with.  Only the last 8 bytes are taken.
 	 * @returns {Uint64}
 	 */
 	static from(...bytes) {
@@ -82,8 +84,8 @@ class Uint64 {
 	}
 
 	/**
-	 * Set the last last bytes.length bytes.
-	 * @param {number[]} bytes the bytes to set.
+	 * Set the last bytes.length bytes.
+	 * @param {...number} bytes the bytes to set.
 	 */
 	set(...bytes) {
 		if (bytes[0] instanceof Uint64) {
@@ -96,7 +98,7 @@ class Uint64 {
 	}
 
 	/**
-	 * Returns an array buffer where this Uint64 is the first 8 bytes and
+	 * Returns a new array buffer where this Uint64 is the first 8 bytes and
 	 * the passed buffer is the subsequent bytes.
 	 * @param {ArrayBuffer|Buffer|TypedArray} buffer the subsequent bytes.
 	 * @returns {ArrayBuffer}
@@ -110,7 +112,7 @@ class Uint64 {
 	}
 
 	/**
-	 * A string representation of this Uint64.  This string representation is for debugging purposes
+	 * A string representation of this Uint64.  The exact string representation is for debugging purposes
 	 * and does not form part of the public API.
 	 */
 	toString() {
