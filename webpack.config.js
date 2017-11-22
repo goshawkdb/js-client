@@ -1,15 +1,15 @@
-const path = require('path')
+const path = require("path")
 
 module.exports = {
-	entry: './index.js',
+	entry: "./index.js",
 	output: {
 		path: path.resolve(__dirname),
-		filename: 'dist/goshawkdb.browser.js',
+		filename: "dist/goshawkdb.browser.js",
 		libraryTarget: "umd",
 		library: "goshawkdb"
 	},
 	externals: {
-		'ws': 'WebSocket'
+		ws: "WebSocket"
 	},
 	devtool: "cheap-eval-source-map"
 }

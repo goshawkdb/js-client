@@ -1,13 +1,17 @@
-const {binaryToHex, toArrayBuffer} = require('./utils')
-const {TransactionRetryNeeded, MutationNotAllowed} = require('./errors')
-const Uint64 = require('./uint64')
-const Ref = require('./ref')
+const { binaryToHex, toArrayBuffer } = require("./utils")
+const { TransactionRetryNeeded, MutationNotAllowed } = require("./errors")
+const Uint64 = require("./uint64")
+const Ref = require("./ref")
 
 function checkRefs(refs) {
 	for (let i = 0; i < refs.length; ++i) {
 		const ref = refs[i]
 		if (ref instanceof Ref === false) {
-			throw new TypeError(`Reference ${i} was not of reference type - was a ${ref.constructor.name} : ${ref.toString()}`)
+			throw new TypeError(
+				`Reference ${i} was not of reference type - was a ${
+					ref.constructor.name
+				} : ${ref.toString()}`
+			)
 		}
 	}
 }
@@ -62,10 +66,14 @@ class ObjectCacheEntry {
 		}
 
 		// best effort attempt to restrict mutations in the data I return to the user.
-		this.readOnlyData = Object.create({}, {
+		this.readOnlyData = Object.create(
+			{},
+			{
 				value: {
 					set: () => {
-						throw new MutationNotAllowed("Cannot set value without a transaction.write call.")
+						throw new MutationNotAllowed(
+							"Cannot set value without a transaction.write call."
+						)
 					},
 					get: () => {
 						return this.data.value
@@ -73,14 +81,18 @@ class ObjectCacheEntry {
 				},
 				refs: {
 					set: () => {
-						throw new MutationNotAllowed("Cannot set references without a transaction.write call.")
+						throw new MutationNotAllowed(
+							"Cannot set references without a transaction.write call."
+						)
 					},
 					get: () => {
 						const srcRefs = this.data.refs
 						if (global.Proxy) {
 							return new Proxy(srcRefs, {
 								set: () => {
-									throw new MutationNotAllowed("Cannot change references without a transaction.write call.")
+									throw new MutationNotAllowed(
+										"Cannot change references without a transaction.write call."
+									)
 								}
 							})
 						} else {
@@ -88,7 +100,8 @@ class ObjectCacheEntry {
 						}
 					}
 				}
-			})
+			}
+		)
 
 		// Record which actions have occurred on this object from the client.
 		// These are only needed on objects within a transactions cache, not at the top level.
@@ -115,7 +128,9 @@ class ObjectCacheEntry {
 			return this.readOnlyData
 		}
 
-		throw new TransactionRetryNeeded(`Object ${binaryToHex(this.id)} not present in cache`)
+		throw new TransactionRetryNeeded(
+			`Object ${binaryToHex(this.id)} not present in cache`
+		)
 	}
 
 	write(value, refs) {
@@ -157,23 +172,29 @@ class ObjectCacheEntry {
 
 	toAction() {
 		const result = {
-			VarId: this.id.buffer,
+			VarId: this.id.buffer
 		}
-		const refMessages = this.data.refs ? this.data.refs.map((ref) => ref.toMessage()) : []
+		const refMessages = this.data.refs
+			? this.data.refs.map(ref => ref.toMessage())
+			: []
 
-		if (this.hasBeenRead && !this.hasBeenWritten) { 
+		if (this.hasBeenRead && !this.hasBeenWritten) {
 			result.ActionType = 1
-		} else if (this.hasBeenWritten && !this.hasBeenRead) { 
+		} else if (this.hasBeenWritten && !this.hasBeenRead) {
 			result.ActionType = 2
-			result.Modified = {Value: this.data.value, References: refMessages}
-		} else if (this.hasBeenWritten && this.hasBeenRead) { 
+			result.Modified = { Value: this.data.value, References: refMessages }
+		} else if (this.hasBeenWritten && this.hasBeenRead) {
 			result.ActionType = 3
-			result.Modified = {Value: this.data.value, References: refMessages}
-		} else if (this.hasBeenCreated) { 
+			result.Modified = { Value: this.data.value, References: refMessages }
+		} else if (this.hasBeenCreated) {
 			result.ActionType = 0
-			result.Modified = {Value: this.data.value, References: refMessages}
+			result.Modified = { Value: this.data.value, References: refMessages }
 		} else {
-			throw new Error(`No read or write has occurred on object ${this.id}, cannot form an action.`)
+			throw new Error(
+				`No read or write has occurred on object ${
+					this.id
+				}, cannot form an action.`
+			)
 		}
 		return result
 	}
@@ -214,7 +235,7 @@ class CopyCache {
 		// the version to ask for if we don't currently have any data in the cache for an object.
 		const initialVersion = Uint64.from(0, 0, 0, 0, 0, 0, 0, 0).concat(namespace)
 
-		for (let [,cacheEntry] of this.objects) {
+		for (let [, cacheEntry] of this.objects) {
 			if (cacheEntryFilter(cacheEntry)) {
 				actions.push(cacheEntry.toAction(initialVersion))
 			}

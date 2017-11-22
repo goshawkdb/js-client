@@ -1,15 +1,15 @@
-const MsgpackConnection = require('./msgpack-connection')
-const Uint64 = require('./uint64')
-const Transaction = require('./transaction')
-const Ref = require('./ref')
-const {TransactionRetryNeeded, TransactionRejectedError} = require('./errors')
-const ObjectCache = require('./objectcache')
-const {binaryToHex, asPromise} = require('./utils')
+const MsgpackConnection = require("./msgpack-connection")
+const Uint64 = require("./uint64")
+const Transaction = require("./transaction")
+const Ref = require("./ref")
+const { TransactionRetryNeeded, TransactionRejectedError } = require("./errors")
+const ObjectCache = require("./objectcache")
+const { binaryToHex, asPromise } = require("./utils")
 
 let nextConnectionNumber = 0
 
 /**
- * GosConnections represent the connection to the GoshawkDB.
+ * A Connection represents the connection to the GoshawkDB.
  *
  * They should be acquired through the static {@link GoshawkDb.connect} function.
  */
@@ -17,15 +17,18 @@ class Connection {
 	/** @private */
 	constructor(url) {
 		/** @private used in logging to distinguish different connections */
-		this.connectionId = (nextConnectionNumber++)
+		this.connectionId = nextConnectionNumber++
 		/** @private */
-		this.link = new MsgpackConnection(url, ("000" + this.connectionId).substr(-3))
+		this.link = new MsgpackConnection(
+			url,
+			("000" + this.connectionId).substr(-3)
+		)
 
 		/**
 		 * The product and version information we sent to the server during the initial connection handshake.
 		 * @type {{Product: string, Version: string}}
 		 */
-		this.clientInfo = {Product: "GoshawkDB", Version: "dev"}
+		this.clientInfo = { Product: "GoshawkDB", Version: "dev" }
 
 		/**
 		 * The product and version information we receive from the server during the initial handshake.
@@ -49,8 +52,6 @@ class Connection {
 		 */
 		this.roots = {}
 
-		/** @private the function to deal with incoming messages */
-		this.messageHandler = null
 		/** @private the top level cache that stores all the values and refs for objects the client knows about. */
 		this.cache = null
 
@@ -75,51 +76,43 @@ class Connection {
 	 * @return {Promise<Connection, Error>}
 	 */
 	connect(connectionOptions) {
-		const serverHelloHandler = (message) => {
-			// TODO? : a check could go here to ensure that the server version matches our version (from this.clientInfo.Version).
-			this.serverInfo = message
-			this.messageHandler = rootsHandler
-		}
-
-		const rootsHandler = (message) => {
-			// populate the roots
-			this.roots = {}
-			for (const root of message.Roots) {
-				this.roots[root.Name] = Ref.fromMessage(root)
-			}
-			// set the namespace
-			this.namespace = message.Namespace
-
-			// now we're properly connected
-			this.messageHandler = null
-			this.cache = new ObjectCache(this.namespace)
-			console.info(`Connection ${this.connectionId}: Connected to goshawkdb.`, this.serverInfo, this.clientInfo, this.namespace, this.roots)
-			this._onConnectionNegotiated(this)
-		}
-
-		// This promise should resolve with a working, setup connection if the connection makes its way to a fully
-		// negotiated connection: i.e. it connects, it swaps info, it loads the roots and the namespace and initialises the
-		// relevant state.
-		// If anything happens to disrupt this process before it completes, this promise will reject.
-		return new Promise((resolve, reject) => {
-			this._onConnectionNegotiated = resolve
-			this.messageHandler = serverHelloHandler
-			this.link.connect(
-				// on message
-				(data) => {
-					if (this.messageHandler) {
-						this.messageHandler(data)
-					} else {
-						console.warn(`Connection ${this.connectionId}: No handler found for message`, data)
-					}
+        return new Promise((resolve, reject) => {
+            this.link.connect(
+				(message) => {
+                    console.warn(
+                        `Connection ${this.connectionId}: No handler found for message`,
+                        data
+                    )
 				},
-				// on end - if the connection stops for any reason (error, or deliberate) before it resolves then it rejects.
-				(e) => reject(e),
-				// on open we start the handshake by sending the client info.
-				() => this.link.send(this.clientInfo),
-				connectionOptions
+                e => reject(e),
+                () => {
+					this.link.request(this.clientInfo).then((message) => {
+                        this.serverInfo = message
+						return this.link.request()
+                    }).then((message) => {
+                        // populate the roots
+                        this.roots = {}
+                        for (const root of message.Roots) {
+                            this.roots[root.Name] = Ref.fromMessage(root)
+                        }
+                        // set the namespace
+                        this.namespace = message.Namespace
+
+                        // now we're properly connected
+                        this.cache = new ObjectCache(this.namespace)
+                        console.info(
+                            `Connection ${this.connectionId}: Connected to goshawkdb.`,
+                            this.serverInfo,
+                            this.clientInfo,
+                            this.namespace,
+                            this.roots
+                        )
+                        resolve(this)
+					})
+				},
+                connectionOptions
 			)
-		})
+        })
 	}
 
 	/**
@@ -130,14 +123,26 @@ class Connection {
 	 *
 	 * @param {function(txn:Transaction):{*|Promise<*,Error>}} txnFn the transaction function.  This function may be run multiple times and should rethrow any TransactionRetryNeeded exceptions.
 	 * @returns {Promise<*,Error>} a promise that resolves to the result of the transaction function once the transaction submits or an error if it cannot.
- 	 */
+	 */
 	transact(txnFn) {
 		if (txnFn instanceof Function === false) {
-			throw new TypeError(`Connection ${this.connectionId}: Transaction argument must be a function, was ${String(txnFn)}`)
+			throw new TypeError(
+				`Connection ${
+					this.connectionId
+				}: Transaction argument must be a function, was ${String(txnFn)}`
+			)
 		}
 
 		return new Promise((resolve, reject) => {
-			this.transactions.push(new Transaction(txnFn, {onSuccess: resolve, onFail: reject}, this.roots, this.namespace, this.cache))
+			this.transactions.push(
+				new Transaction(
+					txnFn,
+					{ onSuccess: resolve, onFail: reject },
+					this.roots,
+					this.namespace,
+					this.cache
+				)
+			)
 			this.scheduleNextTransaction(false)
 		})
 	}
@@ -160,7 +165,7 @@ class Connection {
 			return
 		}
 
-		const currentTransaction = this.currentTransaction = this.transactions.shift()
+		const currentTransaction = (this.currentTransaction = this.transactions.shift())
 		const txnIdWithNamespace = this.nextTransactionId.concat(this.namespace)
 
 		const succeed = (finalId, transactionResult) => {
@@ -175,15 +180,18 @@ class Connection {
 			this.transactions.unshift(currentTransaction)
 			this.scheduleNextTransaction(true)
 		}
-		const fail = (err) => {
+		const fail = err => {
 			currentTransaction.onFail(err)
 			this.scheduleNextTransaction(true)
 		}
-		const sendTransaction = (result) => {
-			const transactionMessage = currentTransaction.toMessage(txnIdWithNamespace)
+		const sendTransaction = result => {
+			const transactionMessage = currentTransaction.toMessage(
+				txnIdWithNamespace
+			)
 			if (transactionMessage.ClientTxnSubmission.Actions.length > 0) {
-				this.link.request(transactionMessage)
-					.then((response) => {
+				this.link
+					.request(transactionMessage)
+					.then(response => {
 						this.updateFromTransactionResponse(response)
 						const outcome = response.ClientTxnOutcome
 						if (outcome.Commit) {
@@ -195,7 +203,8 @@ class Connection {
 						} else {
 							fail("Unknown response message " + JSON.stringify(outcome))
 						}
-					}).catch(fail)
+					})
+					.catch(fail)
 			} else {
 				succeed(undefined, result)
 			}
@@ -204,11 +213,13 @@ class Connection {
 		// we use asPromise, since the result of running fn might be a Promise.
 		asPromise(() => {
 			return currentTransaction.fn(currentTransaction)
-		}).catch( (e) => {
-			if (e instanceof TransactionRetryNeeded === false) {
-				throw e
-			}
-		}).then(sendTransaction, fail)
+		})
+			.catch(e => {
+				if (e instanceof TransactionRetryNeeded === false) {
+					throw e
+				}
+			})
+			.then(sendTransaction, fail)
 	}
 
 	/** @private
@@ -217,18 +228,29 @@ class Connection {
 	 */
 	updateFromTransactionResponse(response) {
 		// Responses contain a final transaction id.  We take the first 8 bytes and increment it.
-		this.nextTransactionId = Uint64.fromBinary(response.ClientTxnOutcome.FinalId).inc()
+		this.nextTransactionId = Uint64.fromBinary(
+			response.ClientTxnOutcome.FinalId
+		).inc()
 		// If we received an Abort message, then we may also have received some cache update instructions.
 		if (response.ClientTxnOutcome.Abort) {
 			for (let update of response.ClientTxnOutcome.Abort) {
 				const id = update.VarId
 				if (update.ActionType === 4) {
-					console.debug(`Connection ${this.connectionId}: Removing ${binaryToHex(id)} from cache.`)
+					console.debug(
+						`Connection ${this.connectionId}: Removing ${binaryToHex(
+							id
+						)} from cache.`
+					)
 					this.cache.remove(id)
 				} else {
-					if(update.ActionType === 0 || update.ActionType === 2){
+					if (update.ActionType === 0 || update.ActionType === 2) {
 						const writeData = update.Modified
-						this.cache.get(id).update(writeData.Value.buffer, writeData.References.map(Ref.fromMessage))
+						this.cache
+							.get(id)
+							.update(
+								writeData.Value.buffer,
+								writeData.References.map(Ref.fromMessage)
+							)
 					}
 				}
 			}
@@ -244,7 +266,11 @@ class Connection {
 		if (clearCurrentTransaction) {
 			this.currentTransaction = null
 		}
-		if (this.scheduledCallback == null && this.currentTransaction == null && this.transactions.length > 0) {
+		if (
+			this.scheduledCallback == null &&
+			this.currentTransaction == null &&
+			this.transactions.length > 0
+		) {
 			this.scheduledCallback = setTimeout(() => {
 				this.scheduledCallback = null
 				this.executeNextTransaction()

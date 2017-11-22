@@ -1,4 +1,4 @@
-const {binaryToHex} = require('./utils')
+const { binaryToHex } = require("./utils")
 
 /**
  * A Ref represents a pointer to an object in the database.
@@ -67,11 +67,16 @@ class Ref {
 
 	/** @returns {string} a representation of this reference.  String representations are for debug only and are not considered part of the public API. */
 	toString() {
-		return `{Ref ${binaryToHex(this.varId)} ${this.read ? 'r' : '-'}${this.write ? 'w' : '-'}}`
+		return `{Ref ${binaryToHex(this.varId)} ${this.read ? "r" : "-"}${
+			this.write ? "w" : "-"
+		}}`
 	}
 
 	toMessage() {
-		return {VarId: this.varId.buffer, Capability: {Read: this.read, Write: this.write}}
+		return {
+			VarId: this.varId.buffer,
+			Capability: { Read: this.read, Write: this.write }
+		}
 	}
 }
 

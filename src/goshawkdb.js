@@ -1,4 +1,4 @@
-const Connection = require('./connection')
+const Connection = require("./connection")
 
 // Ensure that all our calls to console.debug don't cause errors.
 if (!global.console.debug) {

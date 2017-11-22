@@ -1,7 +1,11 @@
-const Ref = require('./ref')
-const {TransactionRetryNeeded, CapabilityDenied, RootNotFoundError} = require('./errors')
-const {toArrayBuffer} = require('./utils')
-const Uint64 = require('./uint64')
+const Ref = require("./ref")
+const {
+	TransactionRetryNeeded,
+	CapabilityDenied,
+	RootNotFoundError
+} = require("./errors")
+const { toArrayBuffer } = require("./utils")
+const Uint64 = require("./uint64")
 
 /**
  * @typedef {Int8Array|Uint8Array|Uint8ClampedArray|Int16Array|Uint16Array|Int32Array|Uint32Array|Float32Array|Float64Array} TypedArray
@@ -20,14 +24,13 @@ const nextNewObjectId = Uint64.from(0, 0, 0, 0, 0, 0, 0, 0)
  * Transactions are acquired by calling {@link Connection#transact}.
  */
 class Transaction {
-
 	/** @private */
-	constructor(txnFn, {onSuccess, onFail}, roots, namespace, parentCache) {
+	constructor(txnFn, { onSuccess, onFail }, roots, namespace, parentCache) {
 		/** @private */
-		this.onSuccess = onSuccess;
+		this.onSuccess = onSuccess
 
 		/** @private */
-		this.onFail = onFail;
+		this.onFail = onFail
 
 		/** @private */
 		this.shouldRetry = false
@@ -62,7 +65,11 @@ class Transaction {
 	 */
 	root(rootName) {
 		if (rootName in this.roots === false) {
-			throw new RootNotFoundError(`Root '${rootName}' was not found.  Available roots were '${Object.keys(this.roots).join("', '")}'.`)
+			throw new RootNotFoundError(
+				`Root '${rootName}' was not found.  Available roots were '${Object.keys(
+					this.roots
+				).join("', '")}'.`
+			)
 		}
 		return this.roots[rootName]
 	}
@@ -76,10 +83,14 @@ class Transaction {
 	 */
 	read(ref) {
 		if (ref instanceof Ref == false) {
-			throw new TypeError(`Can only read a reference; you tried to read from ${String(ref)}`)
+			throw new TypeError(
+				`Can only read a reference; you tried to read from ${String(ref)}`
+			)
 		}
 		if (!ref.read) {
-			throw new CapabilityDenied(`Unable to read using reference ${ref.toString()}, as it doesn't allow reads.`)
+			throw new CapabilityDenied(
+				`Unable to read using reference ${ref.toString()}, as it doesn't allow reads.`
+			)
 		}
 		const id = ref.varId
 		const cacheEntry = this.cache.get(id)
@@ -97,10 +108,14 @@ class Transaction {
 	 */
 	write(ref, value, refs) {
 		if (ref instanceof Ref == false) {
-			throw new TypeError(`Can only write with a reference; you tried to write to ${String(ref)}.`)
+			throw new TypeError(
+				`Can only write with a reference; you tried to write to ${String(ref)}.`
+			)
 		}
 		if (!ref.write) {
-			throw new CapabilityDenied(`Unable to write using reference ${ref.toString()}, as it doesn't allow writes.`)
+			throw new CapabilityDenied(
+				`Unable to write using reference ${ref.toString()}, as it doesn't allow writes.`
+			)
 		}
 		value = toArrayBuffer(value)
 		const id = ref.varId
@@ -152,7 +167,13 @@ class Transaction {
 			throw new TypeError("Transaction argument must be a function.")
 		}
 		// txnFn, {onSuccess, onFail}, roots, namespace, parentCache
-		const nestedTransaction = new Transaction(fn, {onSuccess: this.onSuccess, onFail: this.onFail}, this.roots, this.namespace, this.cache)
+		const nestedTransaction = new Transaction(
+			fn,
+			{ onSuccess: this.onSuccess, onFail: this.onFail },
+			this.roots,
+			this.namespace,
+			this.cache
+		)
 		let resultPromise = undefined
 		try {
 			resultPromise = Promise.resolve(fn(nestedTransaction))
@@ -163,11 +184,10 @@ class Transaction {
 			throw e
 		}
 
-		return resultPromise
-			.then((result) => {
-				nestedTransaction.promoteCache(undefined)
-				return result
-			})
+		return resultPromise.then(result => {
+			nestedTransaction.promoteCache(undefined)
+			return result
+		})
 	}
 
 	// private API
@@ -181,7 +201,6 @@ class Transaction {
 		nextNewObjectId.inc()
 		return new Uint8Array(objId)
 	}
-
 
 	/** @private
 	 * Prepares this transaction to be run again.*/
@@ -199,9 +218,11 @@ class Transaction {
 
 	/** @private */
 	toMessage(txnId) {
-		const anyChange = (entry) => entry.hasBeenCreated || entry.hasBeenWritten || entry.hasBeenRead
-		const justReads = (entry) => entry.hasBeenRead
-		const justCacheMisses = (entry) => entry.hasBeenRead && entry.hasData() === false
+		const anyChange = entry =>
+			entry.hasBeenCreated || entry.hasBeenWritten || entry.hasBeenRead
+		const justReads = entry => entry.hasBeenRead
+		const justCacheMisses = entry =>
+			entry.hasBeenRead && entry.hasData() === false
 
 		let filter = anyChange
 		if (this.shouldRetry) {

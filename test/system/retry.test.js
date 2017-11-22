@@ -1,31 +1,40 @@
-const test = require('ava')
-const {transactionTest, testRootName, setupThenTest} = require('../helpers/utils')
+const test = require("ava")
+const {
+	transactionTest,
+	testRootName,
+	setupThenTest
+} = require("../helpers/utils")
 
-test("Retry with value changed by a time", setupThenTest(
-	transactionTest((t, connection, txn) => txn.write(txn.root(testRootName), Buffer.from([0]), [])),
-	transactionTest(async (t, connection, txn) => {
-		t.plan(1)
-		const {value: valueBuf} = txn.read(txn.root(testRootName))
-		const value = new Uint8Array(valueBuf)
-		if (value[0] < 2) {
-			txn.retry()
-		}
-		t.is(value[0], 2)
-	}),
-	transactionTest((t, connection, txn) => {
-		return new Promise((resolve, reject) => {
-			setTimeout(() => {
-				txn.write(txn.root(testRootName), Buffer.from([2]), [])
-				resolve()
-			}, 1000)
+test(
+	"Retry with value changed by a time",
+	setupThenTest(
+		transactionTest((t, connection, txn) =>
+			txn.write(txn.root(testRootName), Buffer.from([0]), [])
+		),
+		transactionTest(async (t, connection, txn) => {
+			t.plan(1)
+			const { value: valueBuf } = txn.read(txn.root(testRootName))
+			const value = new Uint8Array(valueBuf)
+			if (value[0] < 2) {
+				txn.retry()
+			}
+			t.is(value[0], 2)
+		}),
+		transactionTest((t, connection, txn) => {
+			return new Promise((resolve, reject) => {
+				setTimeout(() => {
+					txn.write(txn.root(testRootName), Buffer.from([2]), [])
+					resolve()
+				}, 1000)
+			})
 		})
-	})
-))
+	)
+)
 
 function testAndIncrement(number) {
 	return (t, connection, txn) => {
 		const rootRef = txn.root(testRootName)
-		const {value: valueBuffer} = txn.read(rootRef)
+		const { value: valueBuffer } = txn.read(rootRef)
 		const value = new Uint8Array(valueBuffer)
 		if (value[0] < number) {
 			txn.retry()
@@ -34,12 +43,15 @@ function testAndIncrement(number) {
 	}
 }
 
-test("Retry with value changed multiple times by other connections.",
+test(
+	"Retry with value changed multiple times by other connections.",
 	setupThenTest(
-		transactionTest((t, connection, txn) => txn.write(txn.root(testRootName), Buffer.from([0]), [])),
+		transactionTest((t, connection, txn) =>
+			txn.write(txn.root(testRootName), Buffer.from([0]), [])
+		),
 		transactionTest((t, connection, txn) => {
 			t.plan(1)
-			const {value: valueBuf} = txn.read(txn.root(testRootName))
+			const { value: valueBuf } = txn.read(txn.root(testRootName))
 			const value = new Uint8Array(valueBuf)
 			if (value[0] < 5) {
 				txn.retry()
@@ -50,6 +62,6 @@ test("Retry with value changed multiple times by other connections.",
 		transactionTest(testAndIncrement(1)),
 		transactionTest(testAndIncrement(2)),
 		transactionTest(testAndIncrement(3)),
-		transactionTest(testAndIncrement(4)),
+		transactionTest(testAndIncrement(4))
 	)
 )

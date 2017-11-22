@@ -1,4 +1,4 @@
-const {binaryToHex, toArrayBuffer} = require('./utils')
+const { binaryToHex, toArrayBuffer } = require("./utils")
 
 /**
  * A representation of a Uint64, since otherwise javascript can't do them.
@@ -10,7 +10,9 @@ class Uint64 {
 	 */
 	constructor(uintArray = new Uint8Array(8)) {
 		if (uintArray instanceof Uint8Array === false) {
-			throw new TypeError("Uint64 source must be a Uint8Array, Uint64.from(bytes), Uint64.fromTypedArray, Uint64.fromArrayBuffer might suit your needs better.")
+			throw new TypeError(
+				"Uint64 source must be a Uint8Array, Uint64.from(bytes), Uint64.fromTypedArray, Uint64.fromArrayBuffer might suit your needs better."
+			)
 		}
 		/**
 		 * @private
@@ -53,7 +55,9 @@ class Uint64 {
 	 * @returns {Uint64}
 	 */
 	static fromArrayBuffer(arrayBuffer, byteOffset = 0) {
-		return new Uint64(new Uint8Array(arrayBuffer.slice(byteOffset, byteOffset + 8)))
+		return new Uint64(
+			new Uint8Array(arrayBuffer.slice(byteOffset, byteOffset + 8))
+		)
 	}
 
 	/**
