@@ -122,7 +122,7 @@ class Connection {
 							this.cache = new ObjectCache(this.namespace)
 							console.info(
 								"Connection %s: Connected to goshawkdb.",
-                                this.connectionId,
+								this.connectionId,
 								this.serverInfo,
 								this.clientInfo,
 								this.namespace,
