@@ -78,7 +78,8 @@ class Connection {
 	connect(connectionOptions) {
 		return new Promise((resolve, reject) => {
 			console.info(
-				"%s version %s",
+				"Connection %s: %s version %s",
+				this.connectionId,
 				this.clientInfo.Product,
 				this.clientInfo.Version
 			)
@@ -89,7 +90,7 @@ class Connection {
 						data
 					)
 				},
-				e => reject(e),
+				reject,
 				() => {
 					this.link
 						.request(this.clientInfo)
@@ -100,7 +101,8 @@ class Connection {
 								this.serverInfo.Version !== this.clientInfo.Version
 							) {
 								console.warn(
-									"Version mismatch.  Server reported product %s, version %s",
+									"Connection %s: Version mismatch.  Server reported product %s, version %s",
+									this.connectionId,
 									this.serverInfo.Product,
 									this.serverInfo.Version
 								)
@@ -119,14 +121,16 @@ class Connection {
 							// now we're properly connected
 							this.cache = new ObjectCache(this.namespace)
 							console.info(
-								`Connection ${this.connectionId}: Connected to goshawkdb.`,
+								"Connection %s: Connected to goshawkdb.",
+                                this.connectionId,
 								this.serverInfo,
 								this.clientInfo,
 								this.namespace,
 								this.roots
 							)
-							resolve(this)
+							return this
 						})
+						.then(resolve, reject)
 				},
 				connectionOptions
 			)

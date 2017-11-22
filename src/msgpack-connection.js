@@ -96,7 +96,7 @@ class MsgpackConnection {
 			}
 			if (message) {
 				this.send(message)
-            }
+			}
 		})
 	}
 
