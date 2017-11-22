@@ -221,17 +221,14 @@ class Connection {
 		// If we received an Abort message, then we may also have received some cache update instructions.
 		if (response.ClientTxnOutcome.Abort) {
 			for (let update of response.ClientTxnOutcome.Abort) {
-				const otherTxnId = update.Version.buffer
-				for (let action of update.Actions) {
-					const id = action.VarId
-					if (action.Delete) {
-						console.debug(`Connection ${this.connectionId}: Removing ${binaryToHex(id)} from cache.`)
-						this.cache.remove(id)
-					} else {
-						const writeData = action.Write || action.Create
-						if (writeData) {
-							this.cache.get(id).update(otherTxnId, writeData.Value.buffer, writeData.References.map(Ref.fromMessage))
-						}
+				const id = update.VarId
+				if (update.ActionType === 4) {
+					console.debug(`Connection ${this.connectionId}: Removing ${binaryToHex(id)} from cache.`)
+					this.cache.remove(id)
+				} else {
+					if(update.ActionType === 0 || update.ActionType === 2){
+						const writeData = update.Modified
+						this.cache.get(id).update(writeData.Value.buffer, writeData.References.map(Ref.fromMessage))
 					}
 				}
 			}

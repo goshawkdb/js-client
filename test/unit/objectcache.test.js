@@ -36,7 +36,7 @@ test("ObjectCache#get returns different cache entries for two uint8arrys of diff
 
 test("ObjectCache#getTemporaryView produces a view with its own cache entries.", (t) => {
 	const parentCacheEntry = cache.get(id1)
-	parentCacheEntry.update(v0, testValue, emptyRefs)
+	parentCacheEntry.update(testValue, emptyRefs)
 
 	const viewEntry = view.get(id1)
 
@@ -70,7 +70,7 @@ test("ObjectCache#getTemporaryView throws a retry needed transaction if you read
 
 test("ObjectCache#getTemporaryView allows reads if the value has been cached, and can produce actions including the recorded read.", (t) => {
 	const viewEntry = view.get(id1)
-	viewEntry.update(v0, testValue, emptyRefs)
+	viewEntry.update(testValue, emptyRefs)
 
 	const {value:readValue, refs:readRefs} = viewEntry.read()
 	t.throws(() => {
@@ -82,7 +82,7 @@ test("ObjectCache#getTemporaryView allows reads if the value has been cached, an
 	const dummyTxnId = new Uint8Array(12)
 	const actions = view.getActions(dummyTxnId, (entry) => entry.hasBeenCreated || entry.hasBeenWritten || entry.hasBeenRead)
 	t.deepEqual(actions, [{
-		VarId: id1.buffer,
-		Read: { Version: v0.buffer}
+		VarId: id1.buffer, 
+		ActionType:1
 	}])
 })
