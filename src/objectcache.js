@@ -56,7 +56,6 @@ class ObjectCacheEntry {
 		}
 		this.id = id
 
-		this.version = null
 		this.data = {
 			value: null,
 			refs: null
@@ -101,12 +100,11 @@ class ObjectCacheEntry {
 	}
 
 	// Updates representing version, value and refs are they are in the remote database.  Can populate on an abort or a submit.
-	update(version, value, refs) {
+	update(value, refs) {
 		value = toArrayBuffer(value)
 		checkRefs(refs)
 		this.data.value = value
 		this.data.refs = refs
-		this.version = toArrayBuffer(version)
 	}
 
 	read() {
@@ -131,7 +129,7 @@ class ObjectCacheEntry {
 	}
 
 	hasData() {
-		return this.hasBeenCreated || this.hasBeenWritten || this.version != null
+		return this.hasBeenCreated || this.hasBeenWritten || this.data.value != null
 	}
 
 	create(value, refs) {
@@ -149,7 +147,6 @@ class ObjectCacheEntry {
 	}
 
 	copyFrom(otherEntry) {
-		this.version = otherEntry.version
 		this.data.value = otherEntry.data.value
 		this.data.refs = otherEntry.data.refs
 		this.hasBeenRead = otherEntry.hasBeenRead
@@ -158,20 +155,23 @@ class ObjectCacheEntry {
 		return this
 	}
 
-	toAction(initialVersion) {
+	toAction() {
 		const result = {
 			VarId: this.id.buffer,
 		}
 		const refMessages = this.data.refs ? this.data.refs.map((ref) => ref.toMessage()) : []
 
-		if (this.hasBeenRead && !this.hasBeenWritten) {
-			result.Read = {Version: this.version || initialVersion}
-		} else if (this.hasBeenWritten && !this.hasBeenRead) {
-			result.Write = {Value: this.data.value, References: refMessages}
-		} else if (this.hasBeenWritten && this.hasBeenRead) {
-			result.ReadWrite = {Version: this.version, Value: this.data.value, References: refMessages}
-		} else if (this.hasBeenCreated) {
-			result.Create = {Value: this.data.value, References: refMessages}
+		if (this.hasBeenRead && !this.hasBeenWritten) { 
+			result.ActionType = 1
+		} else if (this.hasBeenWritten && !this.hasBeenRead) { 
+			result.ActionType = 2
+			result.Modified = {Value: this.data.value, References: refMessages}
+		} else if (this.hasBeenWritten && this.hasBeenRead) { 
+			result.ActionType = 3
+			result.Modified = {Value: this.data.value, References: refMessages}
+		} else if (this.hasBeenCreated) { 
+			result.ActionType = 0
+			result.Modified = {Value: this.data.value, References: refMessages}
 		} else {
 			throw new Error(`No read or write has occurred on object ${this.id}, cannot form an action.`)
 		}
@@ -199,7 +199,7 @@ class CopyCache {
 			if (finalTxnId) {
 				// if we are given a transaction id, then this promotion should be treated like a cache update from the server.
 				if (entry.hasBeenCreated || entry.hasBeenWritten) {
-					parentEntry.update(finalTxnId, entry.data.value, entry.data.refs)
+					parentEntry.update(entry.data.value, entry.data.refs)
 				}
 			} else {
 				// otherwise, it's a nested transaction completing, so we do a full copy into the parent.

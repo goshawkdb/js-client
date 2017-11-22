@@ -31,7 +31,7 @@ const v1 = new Uint8Array(Uint64.from(2, 0, 0, 0, 0, 0, 0, 0).concat(oldNamespac
 
 test("Transaction only sends cache misses if there is a cache miss", (t) => {
 	const topLevelCache = new ObjectCache()
-	topLevelCache.get(id1).update(v0, new ArrayBuffer(0), [])
+	topLevelCache.get(id1).update(new ArrayBuffer(0), [])
 
 	const message = testRunTransaction(topLevelCache, (txn) => {
 		txn.create(new ArrayBuffer(3), [])
@@ -48,20 +48,20 @@ test("Transaction only sends cache misses if there is a cache miss", (t) => {
 
 	t.deepEqual(message.ClientTxnSubmission.Actions, [
 		{
-			VarId: id3.buffer,
-			Read: { Version: nullV.buffer }
+			VarId: id3.buffer, 
+			ActionType: 1
 		},
 		{
-			VarId: id4.buffer,
-			Read: { Version: nullV.buffer }
+			VarId: id4.buffer, 
+			ActionType: 1
 		}
 	])
 })
 
 test("Transaction only sends reads for retries", (t) => {
 	const topLevelCache = new ObjectCache()
-	topLevelCache.get(id1).update(v0, new ArrayBuffer(0), [])
-	topLevelCache.get(id3).update(v1, new ArrayBuffer(0), [])
+	topLevelCache.get(id1).update(new ArrayBuffer(0), [])
+	topLevelCache.get(id3).update(new ArrayBuffer(0), [])
 
 	const message = testRunTransaction(topLevelCache, (txn) => {
 		txn.create(new ArrayBuffer(3), [])
@@ -75,12 +75,12 @@ test("Transaction only sends reads for retries", (t) => {
 
 	t.deepEqual(message.ClientTxnSubmission.Actions, [
 		{
-			VarId: id1.buffer,
-			Read: { Version: v0.buffer }
+			VarId: id1.buffer, 
+			ActionType: 1
 		},
 		{
-			VarId: id3.buffer,
-			Read: { Version: v1.buffer }
+			VarId: id3.buffer, 
+			ActionType: 1
 		}
 	])
 })
