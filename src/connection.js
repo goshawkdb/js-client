@@ -76,43 +76,61 @@ class Connection {
 	 * @return {Promise<Connection, Error>}
 	 */
 	connect(connectionOptions) {
-        return new Promise((resolve, reject) => {
-            this.link.connect(
-				(message) => {
-                    console.warn(
-                        `Connection ${this.connectionId}: No handler found for message`,
-                        data
-                    )
-				},
-                e => reject(e),
-                () => {
-					this.link.request(this.clientInfo).then((message) => {
-                        this.serverInfo = message
-						return this.link.request()
-                    }).then((message) => {
-                        // populate the roots
-                        this.roots = {}
-                        for (const root of message.Roots) {
-                            this.roots[root.Name] = Ref.fromMessage(root)
-                        }
-                        // set the namespace
-                        this.namespace = message.Namespace
-
-                        // now we're properly connected
-                        this.cache = new ObjectCache(this.namespace)
-                        console.info(
-                            `Connection ${this.connectionId}: Connected to goshawkdb.`,
-                            this.serverInfo,
-                            this.clientInfo,
-                            this.namespace,
-                            this.roots
-                        )
-                        resolve(this)
-					})
-				},
-                connectionOptions
+		return new Promise((resolve, reject) => {
+			console.info(
+				"%s version %s",
+				this.clientInfo.Product,
+				this.clientInfo.Version
 			)
-        })
+			this.link.connect(
+				message => {
+					console.warn(
+						`Connection ${this.connectionId}: No handler found for message`,
+						data
+					)
+				},
+				e => reject(e),
+				() => {
+					this.link
+						.request(this.clientInfo)
+						.then(message => {
+							this.serverInfo = message
+							if (
+								this.serverInfo.Product !== this.clientInfo.Product ||
+								this.serverInfo.Version !== this.clientInfo.Version
+							) {
+								console.warn(
+									"Version mismatch.  Server reported product %s, version %s",
+									this.serverInfo.Product,
+									this.serverInfo.Version
+								)
+							}
+							return this.link.request()
+						})
+						.then(message => {
+							// populate the roots
+							this.roots = {}
+							for (const root of message.Roots) {
+								this.roots[root.Name] = Ref.fromMessage(root)
+							}
+							// set the namespace
+							this.namespace = message.Namespace
+
+							// now we're properly connected
+							this.cache = new ObjectCache(this.namespace)
+							console.info(
+								`Connection ${this.connectionId}: Connected to goshawkdb.`,
+								this.serverInfo,
+								this.clientInfo,
+								this.namespace,
+								this.roots
+							)
+							resolve(this)
+						})
+				},
+				connectionOptions
+			)
+		})
 	}
 
 	/**
