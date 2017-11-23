@@ -1,4 +1,3 @@
-const Connection = require("./connection")
 const { noop } = require("./utils")
 
 /** @private */
@@ -66,6 +65,7 @@ class Goshawkdb {
 	 * @return {Promise<Connection, Error>} A promise that resolves with a connection or rejects with an error.
 	 */
 	connect(url, connectionOptions) {
+		const Connection = require("./connection")
 		return new Connection(url).connect(connectionOptions)
 	}
 }
