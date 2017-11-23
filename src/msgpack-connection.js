@@ -1,5 +1,6 @@
 const msgpack = require("msgpack-lite/dist/msgpack.min.js")
 const WebSocket = require("ws")
+const goshawkdb = require("./goshawkdb")
 
 function noop() {}
 
@@ -10,7 +11,7 @@ function noop() {}
 class MsgpackConnection {
 	constructor(url, connectionLabel = "") {
 		this.url = url
-		// connectionLabel is purely used for logging.
+		// connectionLabel is used for logging.
 		this.connectionLabel = connectionLabel
 		this.websocket = null
 		this.options = {
@@ -28,9 +29,15 @@ class MsgpackConnection {
 		connectionOptions = connectionOptions || {}
 		connectionOptions.ciphers = "ECDHE-ECDSA-AES128-GCM-SHA256"
 		this.onMessage = onMessage
-		// onEnd triggers onError or onClose.
+		// onEnd triggers before either onEnd or onClose and indicates that the connection has ended.
 		this.onEnd = onEnd
 		this.onOpen = onOpen
+
+		goshawkdb.logger.info(
+			"Connection %s: Connecting to %s",
+			this.connectionLabel,
+			this.url
+		)
 		const websocket = (this.websocket = new WebSocket(
 			this.url,
 			undefined,
@@ -39,11 +46,14 @@ class MsgpackConnection {
 		Object.assign(websocket, {
 			binaryType: "arraybuffer",
 			onopen: evt => {
-				console.debug("Connection %s: Connection Open", this.connectionLabel)
+				goshawkdb.logger.debug(
+					"Connection %s: Connection Open",
+					this.connectionLabel
+				)
 				this.onOpen(evt)
 			},
 			onclose: evt => {
-				console.debug(
+				goshawkdb.logger.debug(
 					"Connection %s: Connection Closed",
 					this.connectionLabel,
 					evt.code,
@@ -53,7 +63,7 @@ class MsgpackConnection {
 				this.onClose(evt)
 			},
 			onerror: evt => {
-				console.error(
+				goshawkdb.logger.error(
 					"Connection %s: Connection Error",
 					this.connectionLabel,
 					evt.code,
@@ -64,14 +74,14 @@ class MsgpackConnection {
 			},
 			onmessage: messageEvent => {
 				const data = msgpack.decode(new Uint8Array(messageEvent.data))
-				console.debug("%s <", this.connectionLabel, data)
+				goshawkdb.logger.debug("%s <", this.connectionLabel, data)
 				this.onMessage(data)
 			}
 		})
 	}
 
 	send(message) {
-		console.debug("%s >", this.connectionLabel, message)
+		goshawkdb.logger.debug("%s >", this.connectionLabel, message)
 		this.websocket.send(msgpack.encode(message, this.options))
 	}
 

@@ -5,8 +5,12 @@ const Ref = require("./ref")
 const { TransactionRetryNeeded, TransactionRejectedError } = require("./errors")
 const ObjectCache = require("./objectcache")
 const { binaryToHex, asPromise } = require("./utils")
+const goshawkdb = require("./goshawkdb")
 
 let nextConnectionNumber = 0
+function connectionLabel(connectionId) {
+	return ("000" + connectionId).substr(-3)
+}
 
 /**
  * A Connection represents the connection to the GoshawkDB.
@@ -17,12 +21,9 @@ class Connection {
 	/** @private */
 	constructor(url) {
 		/** @private used in logging to distinguish different connections */
-		this.connectionId = nextConnectionNumber++
+		this.connectionId = connectionLabel(nextConnectionNumber++)
 		/** @private */
-		this.link = new MsgpackConnection(
-			url,
-			("000" + this.connectionId).substr(-3)
-		)
+		this.link = new MsgpackConnection(url, this.connectionId)
 
 		/**
 		 * The product and version information we sent to the server during the initial connection handshake.
@@ -77,7 +78,7 @@ class Connection {
 	 */
 	connect(connectionOptions) {
 		return new Promise((resolve, reject) => {
-			console.info(
+			goshawkdb.logger.info(
 				"Connection %s: %s version %s",
 				this.connectionId,
 				this.clientInfo.Product,
@@ -85,9 +86,10 @@ class Connection {
 			)
 			this.link.connect(
 				message => {
-					console.warn(
-						`Connection ${this.connectionId}: No handler found for message`,
-						data
+					goshawkdb.logger.warn(
+						`Connection %s: No handler found for message`,
+						this.connectionId,
+						message
 					)
 				},
 				reject,
@@ -100,7 +102,7 @@ class Connection {
 								this.serverInfo.Product !== this.clientInfo.Product ||
 								this.serverInfo.Version !== this.clientInfo.Version
 							) {
-								console.warn(
+								goshawkdb.logger.warn(
 									"Connection %s: Version mismatch.  Server reported product %s, version %s",
 									this.connectionId,
 									this.serverInfo.Product,
@@ -120,7 +122,7 @@ class Connection {
 
 							// now we're properly connected
 							this.cache = new ObjectCache(this.namespace)
-							console.info(
+							goshawkdb.logger.info(
 								"Connection %s: Connected to goshawkdb.",
 								this.connectionId,
 								this.serverInfo,
@@ -258,7 +260,7 @@ class Connection {
 			for (let update of response.ClientTxnOutcome.Abort) {
 				const id = update.VarId
 				if (update.ActionType === 4) {
-					console.debug(
+					goshawkdb.logger.debug(
 						`Connection ${this.connectionId}: Removing ${binaryToHex(
 							id
 						)} from cache.`
