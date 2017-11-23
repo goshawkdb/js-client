@@ -1,5 +1,38 @@
 {
-    "source":"./src",
-    "destination":"./dist",
-    "plugins": [{"name": "esdoc-node"}]
+  "source": "./src",
+  "destination": "./dist",
+  "plugins": [
+    {
+      "name": "esdoc-standard-plugin",
+      "option": {
+        "lint": {
+          "enable": false
+        },
+        "coverage": {
+          "enable": false
+        },
+        "accessor": {
+          "access": [
+            "public"
+          ],
+          "autoPrivate": true
+        },
+        "undocumentIdentifier": {
+          "enable": true
+        },
+        "unexportedIdentifier": {
+          "enable": true
+        },
+        "typeInference": {
+          "enable": false
+        }
+      }
+    },
+    {
+      "name": "esdoc-external-nodejs-plugin",
+      "option": {
+        "enable": true
+      }
+    }
+  ]
 }
