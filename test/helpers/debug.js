@@ -1,6 +1,5 @@
 const util = require("util")
 
-global.console.debug = console.log
 if (process.stdout.isTTY) {
 	util.inspect.defaultOptions.colors = true
 	util.inspect.defaultOptions.depth = 6
