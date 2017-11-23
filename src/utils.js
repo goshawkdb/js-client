@@ -1,6 +1,8 @@
 /**
  * @param {ArrayBuffer|Buffer|TypedArray} binary the binary we want to represent in hex.
  * @returns {string} a hexadecimal representation of this binary.
+ *
+ * @private
  */
 exports.binaryToHex = function binaryToHex(binary) {
 	let uintarray = null
@@ -18,9 +20,16 @@ exports.binaryToHex = function binaryToHex(binary) {
 }
 
 /**
+ * Does nothing.
+ * @private
+ */
+exports.noop = function noop() {}
+
+/**
  * Tries to convert a binary value into an array buffer.
  * @param {ArrayBuffer|Buffer|TypedArray} value the value to convert.
  * @returns {ArrayBuffer}
+ * @private
  */
 exports.toArrayBuffer = function toArrayBuffer(value) {
 	if (value instanceof ArrayBuffer) {
@@ -43,6 +52,7 @@ exports.toArrayBuffer = function toArrayBuffer(value) {
  * asynchronous.
  * @param {function} fn the function that will be evaluated to populate the promise.
  * @returns {Promise}
+ * @private
  */
 exports.asPromise = function asPromise(fn) {
 	try {

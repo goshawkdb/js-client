@@ -1,8 +1,7 @@
 const msgpack = require("msgpack-lite/dist/msgpack.min.js")
 const WebSocket = require("ws")
 const goshawkdb = require("./goshawkdb")
-
-function noop() {}
+const { noop } = require("./utils")
 
 /**
  * The websocket and Msgpack connection.

@@ -8,9 +8,6 @@ const { binaryToHex, asPromise } = require("./utils")
 const goshawkdb = require("./goshawkdb")
 
 let nextConnectionNumber = 0
-function connectionLabel(connectionId) {
-	return ("000" + connectionId).substr(-3)
-}
 
 /**
  * A Connection represents the connection to the GoshawkDB.
@@ -21,7 +18,7 @@ class Connection {
 	/** @private */
 	constructor(url) {
 		/** @private used in logging to distinguish different connections */
-		this.connectionId = connectionLabel(nextConnectionNumber++)
+		this.connectionId = ("000" + nextConnectionNumber++).substr(-3)
 		/** @private */
 		this.link = new MsgpackConnection(url, this.connectionId)
 
@@ -220,7 +217,7 @@ class Connection {
 						const outcome = response.ClientTxnOutcome
 						if (outcome.Commit) {
 							succeed(outcome.FinalId, result)
-						} else if (outcome.Error != "") {
+						} else if (outcome.Error !== "") {
 							fail(new TransactionRejectedError(outcome.Error))
 						} else if (outcome.Abort) {
 							retry()

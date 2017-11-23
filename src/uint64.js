@@ -2,6 +2,8 @@ const { binaryToHex, toArrayBuffer } = require("./utils")
 
 /**
  * A representation of a Uint64, since otherwise javascript can't do them.
+ *
+ * @private
  */
 class Uint64 {
 	/**
@@ -68,7 +70,7 @@ class Uint64 {
 	inc() {
 		for (let idx = this.data.length - 1; idx >= 0; --idx) {
 			this.data[idx] += 1
-			if (this.data[idx] != 0) {
+			if (this.data[idx] !== 0) {
 				break
 			}
 		}

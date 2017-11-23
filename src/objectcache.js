@@ -3,6 +3,7 @@ const { TransactionRetryNeeded, MutationNotAllowed } = require("./errors")
 const Uint64 = require("./uint64")
 const Ref = require("./ref")
 
+/** @private */
 function checkRefs(refs) {
 	for (let i = 0; i < refs.length; ++i) {
 		const ref = refs[i]
@@ -48,14 +49,18 @@ class ObjectCache {
 
 module.exports = ObjectCache
 
-// An ObjectCacheEntry represents the clients knowledge about a GoshawkDB Object.
-//  - It should always have an id.
-//  - If it contains values known to have been in the database (either they have been sent in a cache update, or a
-//    create/write that has been acknowledged.  The values version and data.value and data.refs will be set.
-//	- data.refs and data.value will be set after a write or create.
+/**
+ * An ObjectCacheEntry represents the clients knowledge about a GoshawkDB Object.
+ *  - It should always have an id.
+ *  - If it contains values known to have been in the database (either they have been sent in a cache update, or a
+ *    create/write that has been acknowledged.  The values version and data.value and data.refs will be set.
+ *	- data.refs and data.value will be set after a write or create.
+ *
+ * @private
+ */
 class ObjectCacheEntry {
 	constructor(id) {
-		if (id instanceof Uint8Array == false) {
+		if (id instanceof Uint8Array === false) {
 			throw new TypeError(`id must be a uint8, was ${String(id)}`)
 		}
 		this.id = id
@@ -144,11 +149,11 @@ class ObjectCacheEntry {
 	}
 
 	hasData() {
-		return this.hasBeenCreated || this.hasBeenWritten || this.data.value != null
+		return this.hasBeenCreated || this.hasBeenWritten || this.data.value !== null
 	}
 
 	create(value, refs) {
-		if (value instanceof ArrayBuffer != true) {
+		if (value instanceof ArrayBuffer !== true) {
 			throw new TypeError("values should be array buffers : " + value)
 		}
 		checkRefs(refs)
@@ -200,6 +205,7 @@ class ObjectCacheEntry {
 	}
 }
 
+/** @private */
 class CopyCache {
 	constructor(parentCache) {
 		this.parentCache = parentCache
